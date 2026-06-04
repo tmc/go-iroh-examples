@@ -16,8 +16,9 @@ Run all default examples and package tests:
 go test ./... -count=1
 ```
 
-Use a temporary `go.work` outside this repository when testing against a local
-go-iroh checkout.
+The checked-in `go.work` points at a sibling `../go-iroh` checkout so examples
+can track local API work. Remove or ignore it when testing only the module
+version pinned in `go.mod`.
 
 ## Progression
 
@@ -49,6 +50,7 @@ go-iroh checkout.
 | `24-irohcat` | `nc`-style stdin/stdout piping over an iroh stream |
 | `25-http-over-iroh` | serving `net/http` over stream-backed iroh `net.Conn` values |
 | `26-stream-netconn-deadline` | using `Conn.OpenStreamConn`, `Conn.AcceptStreamConn`, and deadlines |
+| `27-local-infra` | embedding local DNS, relay, and metrics infrastructure packages |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
@@ -94,7 +96,8 @@ addresses, direct connections, routers and ALPN dispatch, manual incoming
 admission, source-address validation, hooks, metrics, memory/DNS/pkarr address
 lookup, relay opt-in, streams, datagrams, multi-stream transfers, `watch`
 observers, stream-backed `net.Conn` values, `net/http` over iroh, and `irohcat`
-stdin/stdout piping.
+stdin/stdout piping. `17-dumbpipe` and `24-irohcat` use the public
+`endpointticket` package for Rust-compatible endpoint tickets.
 
 Some exported APIs are low-level configuration hooks rather than separate
 workflows. `WithKeyLogWriter`, `WithTransportConfig`, `WithBindAddrOpts`,
