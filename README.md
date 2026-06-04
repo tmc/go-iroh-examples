@@ -34,13 +34,15 @@ go run ./cmd/21-memory-mesh
 go run ./cmd/22-watch-observer
 go run ./cmd/23-watch-value
 go run ./cmd/24-irohcat
+go run ./cmd/25-http-over-iroh
+go run ./cmd/26-stream-netconn-deadline
 ```
 
 ## Progression
 
 | Example | Shows |
 |---|---|
-| `01-keys` | endpoint identity: `key.SecretKey`, `key.EndpointId`, signatures |
+| `01-keys` | endpoint identity: `key.SecretKey`, `key.EndpointID`, signatures |
 | `02-addresses` | address construction with `netaddr.EndpointAddr` |
 | `03-direct-echo` | two localhost endpoints exchanging a QUIC stream |
 | `04-router-echo` | ALPN dispatch through `iroh.Router` |
@@ -64,6 +66,8 @@ go run ./cmd/24-irohcat
 | `22-watch-observer` | observing endpoint address changes with `watch.Observer` |
 | `23-watch-value` | using `watch.Value` and observer streams directly |
 | `24-irohcat` | `nc`-style stdin/stdout piping over an iroh stream |
+| `25-http-over-iroh` | serving `net/http` over stream-backed iroh `net.Conn` values |
+| `26-stream-netconn-deadline` | using `Conn.OpenStreamConn`, `Conn.AcceptStreamConn`, and deadlines |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
@@ -108,7 +112,8 @@ The examples cover the main public feature groups: endpoint identity and
 addresses, direct connections, routers and ALPN dispatch, manual incoming
 admission, source-address validation, hooks, metrics, memory/DNS/pkarr address
 lookup, relay opt-in, streams, datagrams, multi-stream transfers, `watch`
-observers, and `irohcat` stdin/stdout piping.
+observers, stream-backed `net.Conn` values, `net/http` over iroh, and `irohcat`
+stdin/stdout piping.
 
 Some exported APIs are low-level configuration hooks rather than separate
 workflows. `WithKeyLogWriter`, `WithTransportConfig`, `WithBindAddrOpts`,
@@ -119,6 +124,10 @@ an example needs that specific tuning.
 
 The stream-backed `net.Listener` examples are kept off `main` on the
 `examples/net-listener` branch until the pinned go-iroh API exposes that surface.
+
+`25-http-over-iroh` uses a small local `net.Listener` adapter around accepted
+iroh stream `net.Conn` values. It does not depend on a public `net.Listener`
+type in go-iroh.
 
 ## Rust Docs Equivalents
 
