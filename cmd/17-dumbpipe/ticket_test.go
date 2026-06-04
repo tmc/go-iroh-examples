@@ -1,4 +1,4 @@
-package dumbticket
+package main
 
 import (
 	"encoding/base32"
@@ -38,12 +38,12 @@ func TestEndpointTicketGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "endpoint" + strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(wantBytes))
-	if got := EncodeEndpoint(addr); got != want {
-		t.Fatalf("EncodeEndpoint = %q, want %q", got, want)
+	if got := encodeEndpointTicket(addr); got != want {
+		t.Fatalf("encodeEndpointTicket = %q, want %q", got, want)
 	}
-	got, err := DecodeEndpoint(want)
+	got, err := decodeEndpointTicket(want)
 	if err != nil {
-		t.Fatalf("DecodeEndpoint: %v", err)
+		t.Fatalf("decodeEndpointTicket: %v", err)
 	}
 	if !got.ID.Equal(addr.ID) {
 		t.Fatalf("id = %s, want %s", got.ID, addr.ID)

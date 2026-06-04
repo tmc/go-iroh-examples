@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -30,7 +29,7 @@ func main() {
 	lookup.AddEndpointAddr(server.Addr())
 
 	router, err := iroh.NewRouter(server, map[string]iroh.ProtocolHandler{
-		alpn: exampleutil.EchoHandler{},
+		alpn: echoHandler{},
 	}, nil)
 	if err != nil {
 		panic(err)
@@ -66,7 +65,7 @@ func main() {
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exampleutil.Exchange(ctx, conn, "discovered hello")
+	reply, err := exchange(ctx, conn, "discovered hello")
 	if err != nil {
 		panic(err)
 	}

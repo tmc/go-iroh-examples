@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/dumbticket"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
 	"github.com/tmc/go-iroh/netaddr"
@@ -166,7 +165,7 @@ func listen(bind, advertise, keyPath, ticketPath string, useRelay bool) error {
 		}
 		addr = netaddr.NewEndpointAddr(ep.ID()).WithIP(ap)
 	}
-	ticket := dumbticket.EncodeEndpoint(addr)
+	ticket := encodeEndpointTicket(addr)
 	if ticketPath != "" {
 		if err := os.WriteFile(ticketPath, []byte(ticket+"\n"), 0o644); err != nil {
 			return fmt.Errorf("write ticket: %w", err)
@@ -210,7 +209,7 @@ func loadOrCreateSecretKey(path string) (key.SecretKey, error) {
 
 func connect(bind, ticket string) error {
 	ctx := context.Background()
-	addr, err := dumbticket.DecodeEndpoint(ticket)
+	addr, err := decodeEndpointTicket(ticket)
 	if err != nil {
 		return err
 	}

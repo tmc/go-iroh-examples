@@ -1,4 +1,4 @@
-package dumbticket
+package main
 
 import (
 	"encoding/base32"
@@ -14,8 +14,7 @@ import (
 
 var base32NoPad = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-// EncodeEndpoint encodes addr as a Rust iroh-tickets endpoint ticket.
-func EncodeEndpoint(addr netaddr.EndpointAddr) string {
+func encodeEndpointTicket(addr netaddr.EndpointAddr) string {
 	var b []byte
 	b = append(b, 0) // TicketWireFormat::Variant1.
 	id := addr.ID.Bytes()
@@ -25,12 +24,10 @@ func EncodeEndpoint(addr netaddr.EndpointAddr) string {
 	for _, a := range addrs {
 		b = appendTransportAddr(b, a)
 	}
-	out := "endpoint" + base32NoPad.EncodeToString(b)
-	return strings.ToLower(out)
+	return "endpoint" + strings.ToLower(base32NoPad.EncodeToString(b))
 }
 
-// DecodeEndpoint decodes a Rust iroh-tickets endpoint ticket.
-func DecodeEndpoint(ticket string) (netaddr.EndpointAddr, error) {
+func decodeEndpointTicket(ticket string) (netaddr.EndpointAddr, error) {
 	rest, ok := strings.CutPrefix(ticket, "endpoint")
 	if !ok {
 		return netaddr.EndpointAddr{}, errors.New("endpoint ticket: missing endpoint prefix")
@@ -39,7 +36,7 @@ func DecodeEndpoint(ticket string) (netaddr.EndpointAddr, error) {
 	if err != nil {
 		return netaddr.EndpointAddr{}, fmt.Errorf("endpoint ticket: decode base32: %w", err)
 	}
-	p := parser{b: b}
+	p := ticketParser{b: b}
 	variant, err := p.varint()
 	if err != nil {
 		return netaddr.EndpointAddr{}, err
@@ -115,14 +112,14 @@ func appendVarint(b []byte, n uint64) []byte {
 	return append(b, byte(n))
 }
 
-type parser struct {
+type ticketParser struct {
 	b   []byte
 	off int
 }
 
-func (p *parser) done() bool { return p.off == len(p.b) }
+func (p *ticketParser) done() bool { return p.off == len(p.b) }
 
-func (p *parser) bytes(n int) ([]byte, error) {
+func (p *ticketParser) bytes(n int) ([]byte, error) {
 	if n < 0 || len(p.b)-p.off < n {
 		return nil, errors.New("endpoint ticket: truncated")
 	}
@@ -131,7 +128,7 @@ func (p *parser) bytes(n int) ([]byte, error) {
 	return out, nil
 }
 
-func (p *parser) varint() (uint64, error) {
+func (p *ticketParser) varint() (uint64, error) {
 	var n uint64
 	for shift := uint(0); shift < 64; shift += 7 {
 		b, err := p.bytes(1)
@@ -146,7 +143,7 @@ func (p *parser) varint() (uint64, error) {
 	return 0, errors.New("endpoint ticket: varint overflow")
 }
 
-func (p *parser) transportAddr() (netaddr.TransportAddr, error) {
+func (p *ticketParser) transportAddr() (netaddr.TransportAddr, error) {
 	kind, err := p.varint()
 	if err != nil {
 		return nil, err

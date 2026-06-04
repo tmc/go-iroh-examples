@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 )
@@ -49,7 +48,7 @@ func main() {
 			return
 		}
 		accepted <- fmt.Sprintf("%s from %s", got, conn.RemoteID().Short())
-		_ = exampleutil.EchoOnce(ctx, conn)
+		_ = echoOnce(ctx, conn)
 	}()
 
 	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
@@ -65,7 +64,7 @@ func main() {
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exampleutil.Exchange(ctx, conn, "manual hello")
+	reply, err := exchange(ctx, conn, "manual hello")
 	if err != nil {
 		panic(err)
 	}

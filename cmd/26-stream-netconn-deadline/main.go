@@ -29,6 +29,7 @@ func main() {
 	defer server.Shutdown(ctx)
 
 	done := make(chan struct{})
+	release := make(chan struct{})
 	go func() {
 		defer close(done)
 		conn, err := server.Accept(ctx)
@@ -36,6 +37,7 @@ func main() {
 			return
 		}
 		defer conn.Close()
+		defer func() { <-release }()
 
 		stream, err := conn.AcceptStreamConn(ctx)
 		if err != nil {
@@ -84,5 +86,6 @@ func main() {
 	}
 	fmt.Print(reply)
 
+	close(release)
 	<-done
 }

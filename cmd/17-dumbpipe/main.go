@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/dumbticket"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 	"github.com/tmc/go-iroh/relay"
@@ -149,7 +148,7 @@ func listen() error {
 		}
 		addr = netaddr.NewEndpointAddr(ep.ID()).WithIP(ap)
 	}
-	ticket := dumbticket.EncodeEndpoint(addr)
+	ticket := encodeEndpointTicket(addr)
 	fmt.Fprintf(os.Stderr, "Listening. To connect with Rust dumbpipe, use:\ndumbpipe connect %s\n", ticket)
 
 	conn, err := ep.Accept(ctx)
@@ -168,7 +167,7 @@ func listen() error {
 
 func connect(ticket string) error {
 	ctx := context.Background()
-	addr, err := dumbticket.DecodeEndpoint(ticket)
+	addr, err := decodeEndpointTicket(ticket)
 	if err != nil {
 		return err
 	}

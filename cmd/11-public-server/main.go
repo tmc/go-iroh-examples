@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/relay"
 )
@@ -66,7 +65,7 @@ func main() {
 			panic(err)
 		}
 		go func() {
-			_ = exampleutil.EchoOnce(ctx, conn)
+			_ = echoOnce(ctx, conn)
 		}()
 	}
 }
