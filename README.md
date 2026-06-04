@@ -16,10 +16,6 @@ Run all default examples and package tests:
 go test ./... -count=1
 ```
 
-The checked-in `go.work` points at a sibling `../go-iroh` checkout so examples
-can track local API work. Remove or ignore it when testing only the module
-version pinned in `go.mod`.
-
 ## Progression
 
 | Example | Shows |
@@ -51,6 +47,9 @@ version pinned in `go.mod`.
 | `25-http-over-iroh` | serving `net/http` over stream-backed iroh `net.Conn` values |
 | `26-stream-netconn-deadline` | using `Conn.OpenStreamConn`, `Conn.AcceptStreamConn`, and deadlines |
 | `27-local-infra` | embedding local DNS, relay, and metrics infrastructure packages |
+| `28-net-report` | reading endpoint network reports, with live relay probing opt-in |
+| `29-address-filtering` | publishing filtered DNS/pkarr address sets locally |
+| `30-transport-tuning` | tuning stable QUIC keepalive and idle timeout settings |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
@@ -89,22 +88,34 @@ Set `IROH_EXAMPLE_DNS_ORIGIN` to query a non-default discovery origin.
 `15-pkarr-publish-resolve` publishes temporary endpoint data to the number0
 pkarr relay and resolves it back only when `GO_IROH_LIVE_PKARR=1` is set.
 
+`28-net-report` reads the endpoint's most recent net report. The default run
+does not contact live relays and usually reports that no net report is available.
+Set `GO_IROH_LIVE_RELAY=1` to opt into public relay probing:
+
+```sh
+GO_IROH_LIVE_RELAY=1 go run ./cmd/28-net-report
+```
+
 ## Coverage Notes
 
 The examples cover the main public feature groups: endpoint identity and
 addresses, direct connections, routers and ALPN dispatch, manual incoming
 admission, source-address validation, hooks, metrics, memory/DNS/pkarr address
-lookup, relay opt-in, streams, datagrams, multi-stream transfers, `watch`
-observers, stream-backed `net.Conn` values, `net/http` over iroh, and `irohcat`
-stdin/stdout piping. `17-dumbpipe` and `24-irohcat` use the public
-`endpointticket` package for Rust-compatible endpoint tickets.
+lookup, address filtering, relay opt-in, network reports, streams, datagrams,
+multi-stream transfers, `watch` observers, stream-backed `net.Conn` values,
+`net/http` over iroh, stable transport tuning, and `irohcat` stdin/stdout
+piping. `17-dumbpipe` and `24-irohcat` use the public `endpointticket` package
+for Rust-compatible endpoint tickets.
 
 Some exported APIs are low-level configuration hooks rather than separate
-workflows. `WithKeyLogWriter`, `WithTransportConfig`, `WithBindAddrOpts`,
-`WithCustomTransport`, `WithoutIPTransports`, `WithoutRelayTransports`,
-`NewSessionCache`, and address filters such as `RelayOnlyFilter` and
-`IPOnlyFilter` are intentionally left to package documentation and tests unless
-an example needs that specific tuning.
+workflows. `WithKeyLogWriter`, `WithBindAddrOpts`, `WithoutIPTransports`,
+`WithoutRelayTransports`, and `NewSessionCache` are intentionally left to
+package documentation and tests unless an example needs that specific tuning.
+
+Custom transport examples are deferred until the `go-iroh-alt-transports` API
+lands in main. The current main API exposes the low-level datagram hook; the
+branch is still settling the practical address-publication, capability, policy,
+and stream/memory transport shape that a copyable example should teach.
 
 The stream-backed `net.Listener` examples are kept off `main` on the
 `examples/net-listener` branch until the pinned go-iroh API exposes that surface.
