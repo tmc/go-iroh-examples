@@ -2,11 +2,10 @@
 
 This repository contains small runnable examples for
 [`github.com/tmc/go-iroh`](https://github.com/tmc/go-iroh). The examples build
-against the sibling checkout through this module's `replace` directive:
+against the `github.com/tmc/go-iroh` version pinned in `go.mod`.
 
-```sh
-replace github.com/tmc/go-iroh => ../go-iroh
-```
+Use a temporary `go.work` outside this repository when testing against a local
+go-iroh checkout.
 
 Run them from this directory:
 
@@ -32,6 +31,8 @@ go run ./cmd/18-callme-frames
 go run ./cmd/19-rpc-workqueue
 go run ./cmd/20-resumable-chunks
 go run ./cmd/21-memory-mesh
+go run ./cmd/22-watch-observer
+go run ./cmd/23-watch-value
 go run ./cmd/24-irohcat
 ```
 
@@ -60,6 +61,8 @@ go run ./cmd/24-irohcat
 | `19-rpc-workqueue` | concurrent JSON RPC-style work over multiple streams on one connection |
 | `20-resumable-chunks` | out-of-order chunk transfer with per-chunk hash validation |
 | `21-memory-mesh` | multi-node loopback mesh broadcast using memory endpoint discovery |
+| `22-watch-observer` | observing endpoint address changes with `watch.Observer` |
+| `23-watch-value` | using `watch.Value` and observer streams directly |
 | `24-irohcat` | `nc`-style stdin/stdout piping over an iroh stream |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
@@ -98,6 +101,24 @@ Set `IROH_EXAMPLE_DNS_ORIGIN` to query a non-default discovery origin.
 
 `15-pkarr-publish-resolve` publishes temporary endpoint data to the number0
 pkarr relay and resolves it back only when `GO_IROH_LIVE_PKARR=1` is set.
+
+## Coverage Notes
+
+The examples cover the main public feature groups: endpoint identity and
+addresses, direct connections, routers and ALPN dispatch, manual incoming
+admission, source-address validation, hooks, metrics, memory/DNS/pkarr address
+lookup, relay opt-in, streams, datagrams, multi-stream transfers, `watch`
+observers, and `irohcat` stdin/stdout piping.
+
+Some exported APIs are low-level configuration hooks rather than separate
+workflows. `WithKeyLogWriter`, `WithTransportConfig`, `WithBindAddrOpts`,
+`WithCustomTransport`, `WithoutIPTransports`, `WithoutRelayTransports`,
+`NewSessionCache`, and address filters such as `RelayOnlyFilter` and
+`IPOnlyFilter` are intentionally left to package documentation and tests unless
+an example needs that specific tuning.
+
+The stream-backed `net.Listener` examples are kept off `main` on the
+`examples/net-listener` branch until the pinned go-iroh API exposes that surface.
 
 ## Rust Docs Equivalents
 
