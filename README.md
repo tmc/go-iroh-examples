@@ -4,39 +4,20 @@ This repository contains small runnable examples for
 [`github.com/tmc/go-iroh`](https://github.com/tmc/go-iroh). The examples build
 against the `github.com/tmc/go-iroh` version pinned in `go.mod`.
 
-Use a temporary `go.work` outside this repository when testing against a local
-go-iroh checkout.
-
-Run them from this directory:
+Run an example from this directory:
 
 ```sh
-go run ./cmd/01-keys
-go run ./cmd/02-addresses
 go run ./cmd/03-direct-echo
-go run ./cmd/04-router-echo
-go run ./cmd/05-memory-discovery
-go run ./cmd/06-manual-incoming
-go run ./cmd/07-source-validation
-go run ./cmd/08-hooks
-go run ./cmd/09-metrics
-go run ./cmd/10-multi-alpn
-go run ./cmd/11-public-server
-go run ./cmd/12-connect-public
-go run ./cmd/13-relay-online
-go run ./cmd/14-dns-resolve
-go run ./cmd/15-pkarr-publish-resolve
-go run ./cmd/16-sendme-file
-go run ./cmd/17-dumbpipe
-go run ./cmd/18-callme-frames
-go run ./cmd/19-rpc-workqueue
-go run ./cmd/20-resumable-chunks
-go run ./cmd/21-memory-mesh
-go run ./cmd/22-watch-observer
-go run ./cmd/23-watch-value
-go run ./cmd/24-irohcat
-go run ./cmd/25-http-over-iroh
-go run ./cmd/26-stream-netconn-deadline
 ```
+
+Run all default examples and package tests:
+
+```sh
+go test ./... -count=1
+```
+
+Use a temporary `go.work` outside this repository when testing against a local
+go-iroh checkout.
 
 ## Progression
 
