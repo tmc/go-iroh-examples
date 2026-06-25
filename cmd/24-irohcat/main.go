@@ -35,7 +35,8 @@ func run(args []string) error {
 	case "listen":
 		fs := flag.NewFlagSet("listen", flag.ContinueOnError)
 		fs.SetOutput(io.Discard)
-		relayMode := fs.Bool("relay", false, "advertise a public relay address")
+		relayMode := fs.Bool("relay", true, "advertise a public relay address")
+		noRelay := fs.Bool("no-relay", false, "disable public relay advertising")
 		bind := fs.String("bind", "[::1]:0", "UDP address to bind")
 		advertise := fs.String("advertise", "", "direct address to put in the printed ticket")
 		keyPath := fs.String("key", "", "endpoint secret key file")
@@ -46,7 +47,7 @@ func run(args []string) error {
 		if fs.NArg() != 0 {
 			return usage()
 		}
-		return listen(*bind, *advertise, *keyPath, *ticketPath, *relayMode)
+		return listen(*bind, *advertise, *keyPath, *ticketPath, *relayMode && !*noRelay)
 	case "connect":
 		fs := flag.NewFlagSet("connect", flag.ContinueOnError)
 		fs.SetOutput(io.Discard)
@@ -65,7 +66,7 @@ func run(args []string) error {
 
 func usage() error {
 	return errors.New(`usage:
-  irohcat listen [-relay] [-bind addr:port] [-advertise addr:port] [-key file] [-ticket file]
+  irohcat listen [-no-relay] [-bind addr:port] [-advertise addr:port] [-key file] [-ticket file]
   irohcat connect [-bind addr:port] <ticket>`)
 }
 

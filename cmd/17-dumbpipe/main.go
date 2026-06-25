@@ -38,14 +38,15 @@ func run() error {
 		fs.SetOutput(io.Discard)
 		bind := fs.String("bind", bindAddrDefault(), "UDP address to bind")
 		advertise := fs.String("advertise", "", "direct address to put in the printed ticket")
-		useRelay := fs.Bool("relay", false, "advertise a public relay address")
+		relayFlag := fs.Bool("relay", true, "advertise a public relay address")
+		noRelay := fs.Bool("no-relay", false, "disable public relay advertising")
 		if err := fs.Parse(args[1:]); err != nil {
 			return usage()
 		}
 		if fs.NArg() != 0 {
 			return usage()
 		}
-		return listen(*bind, *advertise, *useRelay)
+		return listen(*bind, *advertise, *relayFlag && !*noRelay)
 	case "connect":
 		fs := flag.NewFlagSet("connect", flag.ContinueOnError)
 		fs.SetOutput(io.Discard)
@@ -64,11 +65,12 @@ func run() error {
 
 func usage() error {
 	return errors.New(`usage:
-  dumbpipe listen [-relay] [-bind addr:port] [-advertise addr:port]
+  dumbpipe listen [-no-relay] [-bind addr:port] [-advertise addr:port]
   dumbpipe connect [-bind addr:port] <endpoint-ticket>
 
-The default bind address is loopback for local demos. For another machine, use
-listen -relay, or bind to a reachable UDP address and advertise that address.`)
+The listen command advertises a public relay by default. Use -no-relay for
+direct-only local demos, or -bind and -advertise for a reachable direct UDP
+address.`)
 }
 
 func demo() error {
@@ -185,7 +187,7 @@ func listen(bind, advertise string, useRelay bool) error {
 	ticket := encodeEndpointTicket(addr)
 	fmt.Fprintf(os.Stderr, "Listening.\nGo:   go run ./cmd/17-dumbpipe connect %s\nRust: dumbpipe connect %s\n", ticket, ticket)
 	if len(addr.RelayURLs()) == 0 && loopbackOnly(addr) {
-		fmt.Fprintln(os.Stderr, "This ticket only contains loopback addresses. It works on this machine only; use -relay or -advertise for another machine.")
+		fmt.Fprintln(os.Stderr, "This ticket only contains loopback addresses. It works on this machine only; omit -no-relay or use -advertise for another machine.")
 	}
 
 	conn, err := ep.Accept(ctx)
@@ -276,7 +278,7 @@ func loopbackOnly(addr netaddr.EndpointAddr) bool {
 
 func connectHint(addr netaddr.EndpointAddr) string {
 	if len(addr.RelayURLs()) == 0 && loopbackOnly(addr) {
-		return "\nreceived a loopback-only ticket; it is usable only on the same machine. Start the listener with -relay for public relay connectivity, or with -bind/-advertise for a reachable direct UDP address."
+		return "\nreceived a loopback-only ticket; it is usable only on the same machine. Start the listener without -no-relay for public relay connectivity, or with -bind/-advertise for a reachable direct UDP address."
 	}
 	return ""
 }

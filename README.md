@@ -158,15 +158,15 @@ printf 'hello from go\n' | go run ./cmd/17-dumbpipe connect <ticket>
 Both directions use the Rust endpoint ticket format and have been verified
 against Rust `dumbpipe` on loopback.
 
-The default listener binds to loopback, so its ticket is only useful on the same
-machine. For another machine, opt the Go listener into the public relay map:
+The listener advertises a public relay by default, so the printed ticket is
+usable from another machine when relay connectivity is available:
 
 ```sh
-go run ./cmd/17-dumbpipe listen -relay
+go run ./cmd/17-dumbpipe listen
 ```
 
-Use `-bind` and `-advertise` instead when you want to publish a directly
-reachable UDP address. `GO_IROH_LIVE_RELAY=1`,
+Use `-no-relay` for direct-only local demos. Use `-bind` and `-advertise` when
+you want to publish a directly reachable UDP address. `GO_IROH_LIVE_RELAY=1`,
 `GO_IROH_DUMBPIPE_BIND_ADDR`, and `GO_IROH_DUMBPIPE_ADVERTISE_ADDR` remain as
 environment-variable aliases for scripted runs.
 
@@ -187,16 +187,20 @@ go run ./cmd/24-irohcat listen
 go run ./cmd/24-irohcat connect <ticket>
 ```
 
-For multi-machine use, opt the listener into the public relay map:
+For multi-machine use, run the listener normally; it advertises a public relay
+by default:
 
 ```sh
-go run ./cmd/24-irohcat listen -relay
+go run ./cmd/24-irohcat listen
 ```
 
 Use `-key` to keep the same endpoint identity across listener restarts, and
 `-ticket` to update a stable file with the listener's current ticket:
 
 ```sh
-go run ./cmd/24-irohcat listen -relay -key ./irohcat.key -ticket ./irohcat.ticket
+go run ./cmd/24-irohcat listen -key ./irohcat.key -ticket ./irohcat.ticket
 go run ./cmd/24-irohcat connect "$(cat ./irohcat.ticket)"
 ```
+
+Pass `-no-relay` to either listener when you want a same-machine or directly
+routed local-only ticket.
