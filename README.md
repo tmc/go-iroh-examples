@@ -158,7 +158,17 @@ printf 'hello from go\n' | go run ./cmd/17-dumbpipe connect <ticket>
 Both directions use the Rust endpoint ticket format and have been verified
 against Rust `dumbpipe` on loopback.
 
-Set `GO_IROH_LIVE_RELAY=1` for Go listener tickets that include a public relay.
+The default listener binds to loopback, so its ticket is only useful on the same
+machine. For another machine, opt the Go listener into the public relay map:
+
+```sh
+go run ./cmd/17-dumbpipe listen -relay
+```
+
+Use `-bind` and `-advertise` instead when you want to publish a directly
+reachable UDP address. `GO_IROH_LIVE_RELAY=1`,
+`GO_IROH_DUMBPIPE_BIND_ADDR`, and `GO_IROH_DUMBPIPE_ADVERTISE_ADDR` remain as
+environment-variable aliases for scripted runs.
 
 `18-callme-frames` is the transport-side go-iroh equivalent of `callme`: it
 sends small audio/video-labeled frames over QUIC datagrams. go-iroh does not

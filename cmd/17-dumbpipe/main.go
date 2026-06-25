@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net/netip"
@@ -21,7 +22,8 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 
@@ -32,15 +34,41 @@ func run() error {
 	}
 	switch args[0] {
 	case "listen":
-		return listen()
-	case "connect":
-		if len(args) != 2 {
-			return errors.New("usage: go run ./cmd/17-dumbpipe connect <endpoint-ticket>")
+		fs := flag.NewFlagSet("listen", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		bind := fs.String("bind", bindAddrDefault(), "UDP address to bind")
+		advertise := fs.String("advertise", "", "direct address to put in the printed ticket")
+		useRelay := fs.Bool("relay", false, "advertise a public relay address")
+		if err := fs.Parse(args[1:]); err != nil {
+			return usage()
 		}
-		return connect(args[1])
+		if fs.NArg() != 0 {
+			return usage()
+		}
+		return listen(*bind, *advertise, *useRelay)
+	case "connect":
+		fs := flag.NewFlagSet("connect", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		bind := fs.String("bind", bindAddrDefault(), "UDP address to bind")
+		if err := fs.Parse(args[1:]); err != nil {
+			return usage()
+		}
+		if fs.NArg() != 1 {
+			return usage()
+		}
+		return connect(*bind, fs.Arg(0))
 	default:
-		return errors.New("usage: go run ./cmd/17-dumbpipe [listen|connect <endpoint-ticket>]")
+		return usage()
 	}
+}
+
+func usage() error {
+	return errors.New(`usage:
+  dumbpipe listen [-relay] [-bind addr:port] [-advertise addr:port]
+  dumbpipe connect [-bind addr:port] <endpoint-ticket>
+
+The default bind address is loopback for local demos. For another machine, use
+listen -relay, or bind to a reachable UDP address and advertise that address.`)
 }
 
 func demo() error {
@@ -113,17 +141,20 @@ func demo() error {
 	return nil
 }
 
-func listen() error {
+func listen(bind, advertise string, useRelay bool) error {
 	ctx := context.Background()
-	bind, err := bindAddr()
+	bindAddr, err := parseBindAddr(bind)
 	if err != nil {
 		return err
 	}
 	opts := []iroh.Option{
-		iroh.WithBindAddr(bind),
+		iroh.WithBindAddr(bindAddr),
 		iroh.WithALPNs(dumbpipeALPN),
 	}
 	if os.Getenv("GO_IROH_LIVE_RELAY") == "1" {
+		useRelay = true
+	}
+	if useRelay {
 		opts = append(opts, iroh.WithRelayMode(relay.ModeDefault()))
 	}
 	ep, err := iroh.Bind(ctx, opts...)
@@ -131,25 +162,31 @@ func listen() error {
 		return err
 	}
 	defer ep.Shutdown(ctx)
-	if os.Getenv("GO_IROH_LIVE_RELAY") == "1" {
+	if useRelay {
 		onlineCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		if err := ep.Online(onlineCtx); err != nil {
 			cancel()
-			return err
+			return fmt.Errorf("connect to public relay map: %w", err)
 		}
 		cancel()
 	}
 
 	addr := ep.Addr()
-	if advertised := os.Getenv("GO_IROH_DUMBPIPE_ADVERTISE_ADDR"); advertised != "" {
-		ap, err := netip.ParseAddrPort(advertised)
+	if advertise == "" {
+		advertise = os.Getenv("GO_IROH_DUMBPIPE_ADVERTISE_ADDR")
+	}
+	if advertise != "" {
+		ap, err := netip.ParseAddrPort(advertise)
 		if err != nil {
 			return fmt.Errorf("parse GO_IROH_DUMBPIPE_ADVERTISE_ADDR: %w", err)
 		}
 		addr = netaddr.NewEndpointAddr(ep.ID()).WithIP(ap)
 	}
 	ticket := encodeEndpointTicket(addr)
-	fmt.Fprintf(os.Stderr, "Listening. To connect with Rust dumbpipe, use:\ndumbpipe connect %s\n", ticket)
+	fmt.Fprintf(os.Stderr, "Listening.\nGo:   go run ./cmd/17-dumbpipe connect %s\nRust: dumbpipe connect %s\n", ticket, ticket)
+	if len(addr.RelayURLs()) == 0 && loopbackOnly(addr) {
+		fmt.Fprintln(os.Stderr, "This ticket only contains loopback addresses. It works on this machine only; use -relay or -advertise for another machine.")
+	}
 
 	conn, err := ep.Accept(ctx)
 	if err != nil {
@@ -165,17 +202,17 @@ func listen() error {
 	return forward(os.Stdin, os.Stdout, stream)
 }
 
-func connect(ticket string) error {
+func connect(bind, ticket string) error {
 	ctx := context.Background()
 	addr, err := decodeEndpointTicket(ticket)
 	if err != nil {
 		return err
 	}
-	bind, err := bindAddr()
+	bindAddr, err := parseBindAddr(bind)
 	if err != nil {
 		return err
 	}
-	opts := []iroh.Option{iroh.WithBindAddr(bind)}
+	opts := []iroh.Option{iroh.WithBindAddr(bindAddr)}
 	if relays := addr.RelayURLs(); len(relays) > 0 {
 		opts = append(opts, iroh.WithRelayMode(relay.ModeCustomURLs(relays...)))
 	}
@@ -195,7 +232,7 @@ func connect(ticket string) error {
 
 	conn, err := ep.Connect(ctx, addr, dumbpipeALPN)
 	if err != nil {
-		return err
+		return fmt.Errorf("connect to %s: %w%s", addr.ID, err, connectHint(addr))
 	}
 	defer conn.Close()
 	stream, err := conn.OpenStreamSync(ctx)
@@ -208,16 +245,40 @@ func connect(ticket string) error {
 	return forward(os.Stdin, os.Stdout, stream)
 }
 
-func bindAddr() (netip.AddrPort, error) {
+func bindAddrDefault() string {
 	s := os.Getenv("GO_IROH_DUMBPIPE_BIND_ADDR")
 	if s == "" {
-		return netip.AddrPortFrom(netip.IPv6Loopback(), 0), nil
+		return "[::1]:0"
 	}
+	return s
+}
+
+func parseBindAddr(s string) (netip.AddrPort, error) {
 	addr, err := netip.ParseAddrPort(s)
 	if err != nil {
-		return netip.AddrPort{}, fmt.Errorf("parse GO_IROH_DUMBPIPE_BIND_ADDR: %w", err)
+		return netip.AddrPort{}, fmt.Errorf("parse bind address: %w", err)
 	}
 	return addr, nil
+}
+
+func loopbackOnly(addr netaddr.EndpointAddr) bool {
+	ips := addr.IPAddrs()
+	if len(ips) == 0 {
+		return false
+	}
+	for _, ap := range ips {
+		if !ap.Addr().IsLoopback() {
+			return false
+		}
+	}
+	return true
+}
+
+func connectHint(addr netaddr.EndpointAddr) string {
+	if len(addr.RelayURLs()) == 0 && loopbackOnly(addr) {
+		return "\nreceived a loopback-only ticket; it is usable only on the same machine. Start the listener with -relay for public relay connectivity, or with -bind/-advertise for a reachable direct UDP address."
+	}
+	return ""
 }
 
 func readHandshake(r io.Reader) error {
