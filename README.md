@@ -50,6 +50,7 @@ go test ./... -count=1
 | `28-net-report` | reading endpoint network reports, with live relay probing opt-in |
 | `29-address-filtering` | publishing filtered DNS/pkarr address sets locally |
 | `30-transport-tuning` | tuning stable QUIC keepalive and idle timeout settings |
+| `31-stream-listener` | serving stream-backed `net.Listener` values directly and through a router |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
@@ -103,9 +104,9 @@ addresses, direct connections, routers and ALPN dispatch, manual incoming
 admission, source-address validation, hooks, metrics, memory/DNS/pkarr address
 lookup, address filtering, relay opt-in, network reports, streams, datagrams,
 multi-stream transfers, `watch` observers, stream-backed `net.Conn` values,
-`net/http` over iroh, stable transport tuning, and `irohcat` stdin/stdout
-piping. `17-dumbpipe` and `24-irohcat` use the public `endpointticket` package
-for Rust-compatible endpoint tickets.
+stream-backed `net.Listener` values, `net/http` over iroh, stable transport
+tuning, and `irohcat` stdin/stdout piping. `17-dumbpipe` and `24-irohcat` use
+the public `endpointticket` package for Rust-compatible endpoint tickets.
 
 Some exported APIs are low-level configuration hooks rather than separate
 workflows. `WithKeyLogWriter`, `WithBindAddrOpts`, `WithoutIPTransports`,
@@ -117,12 +118,9 @@ lands in main. The current main API exposes the low-level datagram hook; the
 branch is still settling the practical address-publication, capability, policy,
 and stream/memory transport shape that a copyable example should teach.
 
-The stream-backed `net.Listener` examples are kept off `main` on the
-`examples/net-listener` branch until the pinned go-iroh API exposes that surface.
-
-`25-http-over-iroh` uses a small local `net.Listener` adapter around accepted
-iroh stream `net.Conn` values. It does not depend on a public `net.Listener`
-type in go-iroh.
+`25-http-over-iroh` shows how to adapt individual accepted stream `net.Conn`
+values into a small local listener. `31-stream-listener` uses go-iroh's public
+`Endpoint.ListenStreams` and router-native `StreamListener` APIs.
 
 ## Rust Docs Equivalents
 
