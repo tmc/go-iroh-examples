@@ -13,6 +13,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
@@ -21,7 +28,7 @@ func main() {
 	if s := os.Getenv("IROH_EXAMPLE_PORT"); s != "" {
 		n, err := strconv.ParseUint(s, 10, 16)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("parse IROH_EXAMPLE_PORT: %w", err)
 		}
 		port = uint16(n)
 	}
@@ -36,7 +43,7 @@ func main() {
 
 	ep, err := iroh.Bind(ctx, opts...)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer ep.Shutdown(ctx)
 
@@ -44,7 +51,7 @@ func main() {
 		onlineCtx, cancelOnline := context.WithTimeout(ctx, 30*time.Second)
 		if err := ep.Online(onlineCtx); err != nil {
 			cancelOnline()
-			panic(err)
+			return fmt.Errorf("connect to public relay map: %w", err)
 		}
 		cancelOnline()
 	}
@@ -57,12 +64,12 @@ func main() {
 
 	if os.Getenv("IROH_EXAMPLE_SERVE") != "1" {
 		fmt.Println("set IROH_EXAMPLE_SERVE=1 to keep serving echo connections")
-		return
+		return nil
 	}
 	for {
 		conn, err := ep.Accept(ctx)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		go func() {
 			_ = echoOnce(ctx, conn)

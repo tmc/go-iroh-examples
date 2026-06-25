@@ -12,10 +12,17 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	rawID := os.Getenv("IROH_EXAMPLE_ENDPOINT_ID")
 	if rawID == "" {
 		fmt.Println("set IROH_EXAMPLE_ENDPOINT_ID to a published endpoint id")
-		return
+		return nil
 	}
 	origin := os.Getenv("IROH_EXAMPLE_DNS_ORIGIN")
 	if origin == "" {
@@ -24,7 +31,7 @@ func main() {
 
 	id, err := key.ParseEndpointID(rawID)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("parse IROH_EXAMPLE_ENDPOINT_ID: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -33,13 +40,15 @@ func main() {
 	lookup := iroh.NewDNSAddressLookup(origin, &dns.Resolver{})
 	for item, err := range lookup.Resolve(ctx, id) {
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("resolve endpoint %s: %w", id, err)
 		}
 		addr := item.Addr()
 		fmt.Println("provenance:", item.Provenance())
 		fmt.Println("endpoint:", addr.ID.Z32())
 		fmt.Println("direct paths:", addr.IPAddrs())
 		fmt.Println("relay paths:", addr.RelayURLs())
-		return
+		return nil
 	}
+	fmt.Println("no DNS endpoint records found")
+	return nil
 }

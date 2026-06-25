@@ -15,9 +15,16 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	if os.Getenv("GO_IROH_LIVE_PKARR") != "1" {
 		fmt.Println("set GO_IROH_LIVE_PKARR=1 to publish to and resolve from the public pkarr relay")
-		return
+		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -25,14 +32,14 @@ func main() {
 
 	secret, err := key.GenerateSecretKey()
 	if err != nil {
-		panic(err)
+		return err
 	}
 	publisher, err := iroh.N0PkarrPublisher(secret, &iroh.PkarrPublisherConfig{
 		AddrFilter:        func(addrs []netaddr.TransportAddr) []netaddr.TransportAddr { return addrs },
 		RepublishInterval: time.Hour,
 	})
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer publisher.Close()
 
@@ -43,7 +50,7 @@ func main() {
 
 	resolver, err := iroh.N0PkarrResolver(nil)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	var lastErr error
@@ -55,12 +62,12 @@ func main() {
 			}
 			fmt.Println("published endpoint:", item.EndpointID().Z32())
 			fmt.Println("resolved direct paths:", item.Addr().IPAddrs())
-			return
+			return nil
 		}
 		time.Sleep(time.Second)
 	}
 	if lastErr != nil {
-		panic(lastErr)
+		return fmt.Errorf("resolve published endpoint: %w", lastErr)
 	}
-	panic(errors.New("pkarr resolve timed out"))
+	return errors.New("pkarr resolve timed out")
 }
