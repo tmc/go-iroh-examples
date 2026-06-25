@@ -12,9 +12,14 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
 
+func run() error {
+	ctx := context.Background()
 	opts := []iroh.Option{
 		iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)),
 		iroh.WithNetReport(),
@@ -26,16 +31,24 @@ func main() {
 
 	ep, err := iroh.Bind(ctx, opts...)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer ep.Shutdown(ctx)
 
-	report, ok := waitReport(ctx, ep)
+	var report iroh.NetReport
+	var ok bool
+	if live {
+		reportCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		report, ok = waitReport(reportCtx, ep)
+		cancel()
+	} else {
+		report, ok = ep.NetReport()
+	}
 	fmt.Println("live relay:", live)
 	fmt.Println("report available:", ok)
 	if !ok {
 		fmt.Println("set GO_IROH_LIVE_RELAY=1 to run net_report against the public relay map")
-		return
+		return nil
 	}
 	fmt.Println("has udp:", report.HasUDP())
 	fmt.Println("udp4:", report.UDPv4)
@@ -43,6 +56,7 @@ func main() {
 	fmt.Println("global v4:", report.GlobalV4)
 	fmt.Println("global v6:", report.GlobalV6)
 	fmt.Println("preferred relay:", report.PreferredRelay)
+	return nil
 }
 
 func waitReport(ctx context.Context, ep *iroh.Endpoint) (iroh.NetReport, bool) {
