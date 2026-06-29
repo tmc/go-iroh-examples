@@ -58,6 +58,7 @@ go test ./... -count=1
 | `36-incoming-filter` | router admission control with `RouterConfig.IncomingFilter` and `AcceptingHandler` |
 | `37-doctor` | printing local relay, net-report, latency, and path diagnostics |
 | `38-app-envelope-ticket` | wrapping endpoint tickets with app metadata in a base32 envelope |
+| `39-datagram-vs-stream` | sending small payloads as datagrams and falling back to streams |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
@@ -135,6 +136,11 @@ values into a small local listener. `31-stream-listener` uses go-iroh's public
 `RouterConfig.IncomingFilter` to accept or reject connections before ALPN
 negotiation, and `AcceptingHandler.OnAccepting` to inspect a connection before
 it is handled.
+
+`39-datagram-vs-stream` shows a transport fallback pattern: try a datagram for a
+small message, and use a reliable stream when the datagram send cannot carry the
+payload. The server reads datagrams and accepts streams concurrently on the same
+connection.
 
 ## Rust Docs Equivalents
 
