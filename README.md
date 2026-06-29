@@ -52,6 +52,7 @@ go test ./... -count=1
 | `30-transport-tuning` | tuning stable QUIC keepalive and idle timeout settings |
 | `31-stream-listener` | serving stream-backed `net.Listener` values directly and through a router |
 | `32-graceful-shutdown` | draining router handlers and closing endpoints after SIGINT/SIGTERM |
+| `33-path-upgrade` | watching selected paths as a relay connection advertises direct candidates |
 | `34-uni-streams` | publishing independent telemetry events over unidirectional streams |
 | `35-close-codes` | decoding application close codes and reasons from peer shutdown |
 | `38-app-envelope-ticket` | wrapping endpoint tickets with app metadata in a base32 envelope |
@@ -110,8 +111,9 @@ lookup, address filtering, relay opt-in, network reports, streams, datagrams,
 multi-stream transfers, `watch` observers, stream-backed `net.Conn` values,
 stream-backed `net.Listener` values, `net/http` over iroh, stable transport
 tuning, graceful shutdown, unidirectional streams, application close codes, and
-app-level ticket envelopes. `17-dumbpipe` and `24-irohcat` use the public
-`endpointticket` package for Rust-compatible endpoint tickets;
+path observation, and app-level ticket envelopes. `17-dumbpipe` and
+`24-irohcat` use the public `endpointticket` package for Rust-compatible
+endpoint tickets;
 `38-app-envelope-ticket` wraps those tickets with application metadata.
 
 Some exported APIs are low-level configuration hooks rather than separate
