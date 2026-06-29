@@ -3,7 +3,7 @@ module github.com/tmc/go-iroh-examples
 go 1.26
 
 require (
-	github.com/tmc/go-iroh v0.0.0-20260606061335-dfa3efcd3088
+	github.com/tmc/go-iroh v0.0.0-20260629030542-6ce58c139b20
 	golang.org/x/net v0.55.0
 )
 
