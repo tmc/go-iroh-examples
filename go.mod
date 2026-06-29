@@ -3,13 +3,13 @@ module github.com/tmc/go-iroh-examples
 go 1.26
 
 require (
-	github.com/tmc/go-iroh v0.0.0-20260629030542-6ce58c139b20
+	github.com/automerge/automerge-go v0.0.0-20241030180337-6fb4f2d08244
+	github.com/tmc/go-iroh v0.0.0-20260629221220-7f45224bf3a0
 	golang.org/x/net v0.55.0
 )
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/automerge/automerge-go v0.0.0-20241030180337-6fb4f2d08244 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/quic-go/quic-go v0.59.1 // indirect
