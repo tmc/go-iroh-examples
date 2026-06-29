@@ -55,6 +55,7 @@ go test ./... -count=1
 | `33-path-upgrade` | watching selected paths as a relay connection advertises direct candidates |
 | `34-uni-streams` | publishing independent telemetry events over unidirectional streams |
 | `35-close-codes` | decoding application close codes and reasons from peer shutdown |
+| `37-doctor` | printing local relay, net-report, latency, and path diagnostics |
 | `38-app-envelope-ticket` | wrapping endpoint tickets with app metadata in a base32 envelope |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
@@ -111,7 +112,7 @@ lookup, address filtering, relay opt-in, network reports, streams, datagrams,
 multi-stream transfers, `watch` observers, stream-backed `net.Conn` values,
 stream-backed `net.Listener` values, `net/http` over iroh, stable transport
 tuning, graceful shutdown, unidirectional streams, application close codes, and
-path observation, and app-level ticket envelopes. `17-dumbpipe` and
+path observation, local diagnostics, and app-level ticket envelopes. `17-dumbpipe` and
 `24-irohcat` use the public `endpointticket` package for Rust-compatible
 endpoint tickets;
 `38-app-envelope-ticket` wraps those tickets with application metadata.
