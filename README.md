@@ -59,6 +59,7 @@ go test ./... -count=1
 | `37-doctor` | printing local relay, net-report, latency, and path diagnostics |
 | `38-app-envelope-ticket` | wrapping endpoint tickets with app metadata in a base32 envelope |
 | `39-datagram-vs-stream` | sending small payloads as datagrams and falling back to streams |
+| `40-iroh-ping` | minimal custom protocol over ALPN `iroh/ping/0`: `PING` to `PONG` |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
