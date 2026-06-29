@@ -54,6 +54,7 @@ go test ./... -count=1
 | `32-graceful-shutdown` | draining router handlers and closing endpoints after SIGINT/SIGTERM |
 | `34-uni-streams` | publishing independent telemetry events over unidirectional streams |
 | `35-close-codes` | decoding application close codes and reasons from peer shutdown |
+| `38-app-envelope-ticket` | wrapping endpoint tickets with app metadata in a base32 envelope |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
@@ -109,8 +110,9 @@ lookup, address filtering, relay opt-in, network reports, streams, datagrams,
 multi-stream transfers, `watch` observers, stream-backed `net.Conn` values,
 stream-backed `net.Listener` values, `net/http` over iroh, stable transport
 tuning, graceful shutdown, unidirectional streams, application close codes, and
-`irohcat` stdin/stdout piping. `17-dumbpipe` and `24-irohcat` use the public
-`endpointticket` package for Rust-compatible endpoint tickets.
+app-level ticket envelopes. `17-dumbpipe` and `24-irohcat` use the public
+`endpointticket` package for Rust-compatible endpoint tickets;
+`38-app-envelope-ticket` wraps those tickets with application metadata.
 
 Some exported APIs are low-level configuration hooks rather than separate
 workflows. `WithKeyLogWriter`, `WithBindAddrOpts`, `WithoutIPTransports`,
