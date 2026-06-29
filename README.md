@@ -61,6 +61,7 @@ go test ./... -count=1
 | `39-datagram-vs-stream` | sending small payloads as datagrams and falling back to streams |
 | `40-iroh-ping` | minimal custom protocol over ALPN `iroh/ping/0`: `PING` to `PONG` |
 | `41-framed-messages` | length-delimited messages over one bidirectional stream |
+| `42-iroh-automerge` | Automerge CRDT sync messages over an iroh protocol handler |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and

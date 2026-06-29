@@ -9,6 +9,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/automerge/automerge-go v0.0.0-20241030180337-6fb4f2d08244 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/quic-go/quic-go v0.59.1 // indirect
