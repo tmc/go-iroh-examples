@@ -55,6 +55,7 @@ go test ./... -count=1
 | `33-path-upgrade` | watching selected paths as a relay connection advertises direct candidates |
 | `34-uni-streams` | publishing independent telemetry events over unidirectional streams |
 | `35-close-codes` | decoding application close codes and reasons from peer shutdown |
+| `36-incoming-filter` | router admission control with `RouterConfig.IncomingFilter` and `AcceptingHandler` |
 | `37-doctor` | printing local relay, net-report, latency, and path diagnostics |
 | `38-app-envelope-ticket` | wrapping endpoint tickets with app metadata in a base32 envelope |
 
@@ -130,6 +131,10 @@ and stream/memory transport shape that a copyable example should teach.
 `25-http-over-iroh` shows how to adapt individual accepted stream `net.Conn`
 values into a small local listener. `31-stream-listener` uses go-iroh's public
 `Endpoint.ListenStreams` and router-native `StreamListener` APIs.
+`36-incoming-filter` shows the router's admission-control surface:
+`RouterConfig.IncomingFilter` to accept or reject connections before ALPN
+negotiation, and `AcceptingHandler.OnAccepting` to inspect a connection before
+it is handled.
 
 ## Rust Docs Equivalents
 
