@@ -51,6 +51,7 @@ go test ./... -count=1
 | `29-address-filtering` | publishing filtered DNS/pkarr address sets locally |
 | `30-transport-tuning` | tuning stable QUIC keepalive and idle timeout settings |
 | `31-stream-listener` | serving stream-backed `net.Listener` values directly and through a router |
+| `32-graceful-shutdown` | draining router handlers and closing endpoints after SIGINT/SIGTERM |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
@@ -105,8 +106,9 @@ admission, source-address validation, hooks, metrics, memory/DNS/pkarr address
 lookup, address filtering, relay opt-in, network reports, streams, datagrams,
 multi-stream transfers, `watch` observers, stream-backed `net.Conn` values,
 stream-backed `net.Listener` values, `net/http` over iroh, stable transport
-tuning, and `irohcat` stdin/stdout piping. `17-dumbpipe` and `24-irohcat` use
-the public `endpointticket` package for Rust-compatible endpoint tickets.
+tuning, graceful shutdown, and `irohcat` stdin/stdout piping. `17-dumbpipe` and
+`24-irohcat` use the public `endpointticket` package for Rust-compatible
+endpoint tickets.
 
 Some exported APIs are low-level configuration hooks rather than separate
 workflows. `WithKeyLogWriter`, `WithBindAddrOpts`, `WithoutIPTransports`,
