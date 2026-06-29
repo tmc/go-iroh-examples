@@ -63,6 +63,7 @@ go test ./... -count=1
 | `41-framed-messages` | length-delimited messages over one bidirectional stream |
 | `42-iroh-automerge` | Automerge CRDT sync messages over an iroh protocol handler |
 | `43-iroh-smol-kv` | signed key-value updates over a joined gossip topic |
+| `44-iroh-gateway` | HTTP Range gateway for verified blobs fetched over iroh |
 
 Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
 dependencies. Examples `11` through `15` demonstrate non-local workflows and
