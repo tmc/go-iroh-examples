@@ -3,66 +3,38 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"net/netip"
 	"time"
 
+	"github.com/tmc/go-iroh/blobs"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 )
-
-const alpn = "go-iroh-examples/resumable-chunks/1"
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	payload := []byte("chunk zero\nchunk one\nchunk two\nchunk three\n")
-	chunks := split(payload, 12)
-	want := make([][32]byte, len(chunks))
-	for i, chunk := range chunks {
-		want[i] = sha256.Sum256(chunk)
+	payload := bytes.Repeat([]byte("verified resumable blob transfer\n"), 96)
+	store, err := blobs.NewBytesMap(payload)
+	if err != nil {
+		panic(err)
 	}
+	hash := blobs.NewHash(payload)
+	size := uint64(len(payload))
 
 	server, err := iroh.Bind(ctx,
 		iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)),
-		iroh.WithALPNs(alpn),
+		iroh.WithALPNs(blobs.ALPN),
 	)
 	if err != nil {
 		panic(err)
 	}
 	defer server.Shutdown(ctx)
 
-	received := make(chan []byte, 1)
-	go func() {
-		conn, err := server.Accept(ctx)
-		if err != nil {
-			return
-		}
-		buf := make([][]byte, len(chunks))
-		for got := 0; got < len(chunks); {
-			stream, err := conn.AcceptStream(ctx)
-			if err != nil {
-				return
-			}
-			index, data, err := readChunk(stream)
-			_ = stream.Close()
-			if err != nil || index >= len(buf) {
-				return
-			}
-			if sha256.Sum256(data) != want[index] {
-				return
-			}
-			if buf[index] == nil {
-				got++
-			}
-			buf[index] = data
-		}
-		received <- bytes.Join(buf, nil)
-	}()
+	serverErr := make(chan error, 4)
+	go serveBlobs(ctx, server, store.Store(), serverErr)
 
 	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
 	if err != nil {
@@ -71,62 +43,73 @@ func main() {
 	defer client.Shutdown(ctx)
 
 	addr := netaddr.NewEndpointAddr(server.ID()).WithIP(server.LocalAddr())
-	conn, err := client.Connect(ctx, addr, alpn)
+	prefix, err := getRange(ctx, client, addr, hash, blobs.RangeChunks(0, 2), size)
 	if err != nil {
+		select {
+		case serverErr := <-serverErr:
+			panic(serverErr)
+		default:
+		}
 		panic(err)
 	}
-	defer conn.Close()
-
-	for _, index := range []int{0, 2, 1, 2, 3} {
-		if err := sendChunk(ctx, conn, uint32(index), chunks[index]); err != nil {
-			panic(err)
+	suffix, err := getRange(ctx, client, addr, hash, blobs.RangeChunks(2, chunkCount(size)), size)
+	if err != nil {
+		select {
+		case serverErr := <-serverErr:
+			panic(serverErr)
+		default:
 		}
+		panic(err)
+	}
+	got := append(prefix, suffix...)
+	if !bytes.Equal(got, payload) {
+		panic("resumed blob mismatch")
 	}
 
-	got := <-received
 	fmt.Println("bytes:", len(got))
-	fmt.Println("sha256:", fmt.Sprintf("%x", sha256.Sum256(got))[:16])
+	fmt.Println("blake3:", hash.Short())
+	fmt.Println("ranges: prefix + resumed suffix")
 }
 
-func split(b []byte, size int) [][]byte {
-	var chunks [][]byte
-	for len(b) > 0 {
-		n := min(size, len(b))
-		chunks = append(chunks, b[:n])
-		b = b[n:]
+func serveBlobs(ctx context.Context, ep *iroh.Endpoint, store blobs.Store, errc chan<- error) {
+	for {
+		conn, err := ep.Accept(ctx)
+		if err != nil {
+			return
+		}
+		go func() {
+			stream, err := conn.AcceptStream(ctx)
+			if err != nil {
+				conn.Close()
+				return
+			}
+			if err := blobs.ServeBlob(ctx, stream, store); err != nil {
+				select {
+				case errc <- err:
+				default:
+				}
+			}
+		}()
 	}
-	return chunks
 }
 
-func sendChunk(ctx context.Context, conn *iroh.Conn, index uint32, data []byte) error {
+func getRange(ctx context.Context, ep *iroh.Endpoint, addr netaddr.EndpointAddr, hash blobs.Hash, ranges blobs.ChunkRanges, size uint64) ([]byte, error) {
+	conn, err := ep.Connect(ctx, addr, blobs.ALPN)
+	if err != nil {
+		return nil, fmt.Errorf("connect provider: %w", err)
+	}
+	defer conn.CloseWithError(0, "")
 	stream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("open blob stream: %w", err)
 	}
-	var hdr [8]byte
-	binary.BigEndian.PutUint32(hdr[:4], index)
-	binary.BigEndian.PutUint32(hdr[4:], uint32(len(data)))
-	if _, err := stream.Write(hdr[:]); err != nil {
-		stream.Close()
-		return err
+	data, err := blobs.GetBlobRangeBytes(ctx, stream, hash, ranges, size)
+	if err != nil {
+		return nil, fmt.Errorf("get range: %w", err)
 	}
-	if _, err := stream.Write(data); err != nil {
-		stream.Close()
-		return err
-	}
-	return stream.Close()
+	return data, nil
 }
 
-func readChunk(r io.Reader) (int, []byte, error) {
-	var hdr [8]byte
-	if _, err := io.ReadFull(r, hdr[:]); err != nil {
-		return 0, nil, err
-	}
-	index := binary.BigEndian.Uint32(hdr[:4])
-	size := binary.BigEndian.Uint32(hdr[4:])
-	data := make([]byte, size)
-	if _, err := io.ReadFull(r, data); err != nil {
-		return 0, nil, err
-	}
-	return int(index), data, nil
+func chunkCount(size uint64) uint64 {
+	return (size + blobs.ChunkSize - 1) / blobs.ChunkSize
 }
