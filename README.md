@@ -35,7 +35,7 @@ go test ./... -count=1
 | `13-relay-online` | opting into the default public relay map and waiting for relay connectivity |
 | `14-dns-resolve` | resolving a published endpoint id through DNS endpoint discovery |
 | `15-pkarr-publish-resolve` | publishing endpoint data to pkarr and resolving it back |
-| `16-sendme-file` | `sendme`-style content transfer over an iroh stream |
+| `16-sendme-file` | `sendme`-style BAO-verified blob transfer |
 | `17-dumbpipe` | `dumbpipe`-style byte piping over an iroh stream |
 | `18-callme-frames` | `callme`-style realtime media frame transport with datagrams |
 | `19-rpc-workqueue` | concurrent postcard RPC work with `irpc.Call` and `irpc.Handler` |
@@ -153,9 +153,9 @@ The examples at <https://docs.iroh.computer/examples> currently highlight
 `sendme`, `callme`, and `dumbpipe`.
 
 `16-sendme-file` is the go-iroh equivalent of the `sendme` shape: one endpoint
-serves file bytes over an iroh stream and the receiver verifies the byte count
-and digest. Set `IROH_EXAMPLE_FILE` to serve a real file instead of the embedded
-sample payload.
+serves a content-addressed blob over iroh and the receiver verifies it with the
+blob's BLAKE3/BAO hash. Set `IROH_EXAMPLE_FILE` to serve a real file instead of
+the embedded sample payload.
 
 `17-dumbpipe` is the go-iroh equivalent of `dumbpipe`: a QUIC stream carries raw
 bytes from one endpoint to another. It speaks Rust dumbpipe's default transport
