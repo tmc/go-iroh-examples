@@ -1,30 +1,28 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/tmc/go-iroh/iroh"
+	"github.com/tmc/go-iroh/irpc"
 	"github.com/tmc/go-iroh/netaddr"
 )
 
 const alpn = "go-iroh-examples/rpc-workqueue/1"
 
 type request struct {
-	ID   int    `json:"id"`
-	Task string `json:"task"`
-	Body string `json:"body"`
+	ID   int
+	Task string
+	Body string
 }
 
 type response struct {
-	ID     int    `json:"id"`
-	Result string `json:"result"`
+	ID     int
+	Result string
 }
 
 func main() {
@@ -45,13 +43,12 @@ func main() {
 		if err != nil {
 			return
 		}
-		for {
-			stream, err := conn.AcceptStream(ctx)
-			if err != nil {
-				return
-			}
-			go handle(stream)
+		handler := irpc.Handler[request, response]{
+			Handle: func(ctx context.Context, req request, r *irpc.Responder[response]) error {
+				return r.Send(response{ID: req.ID, Result: runTask(req)})
+			},
 		}
+		_ = handler.Accept(ctx, conn)
 	}()
 
 	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
@@ -89,33 +86,18 @@ func main() {
 	}
 }
 
-func handle(rw io.ReadWriteCloser) {
-	defer rw.Close()
-	var req request
-	if err := json.NewDecoder(rw).Decode(&req); err != nil {
-		return
-	}
-	resp := response{ID: req.ID, Result: runTask(req)}
-	_ = json.NewEncoder(rw).Encode(resp)
-}
-
 func call(ctx context.Context, conn *iroh.Conn, req request) (response, error) {
-	stream, err := conn.OpenStreamSync(ctx)
+	responses, err := irpc.Call[request, response](ctx, conn, req, 0)
 	if err != nil {
 		return response{}, err
 	}
-	if err := json.NewEncoder(stream).Encode(req); err != nil {
-		stream.Close()
-		return response{}, err
+	for resp, err := range responses {
+		if err != nil {
+			return response{}, err
+		}
+		return resp, nil
 	}
-	if err := stream.Close(); err != nil {
-		return response{}, err
-	}
-	var resp response
-	if err := json.NewDecoder(bufio.NewReader(stream)).Decode(&resp); err != nil {
-		return response{}, err
-	}
-	return resp, nil
+	return response{}, fmt.Errorf("missing response")
 }
 
 func runTask(req request) string {
