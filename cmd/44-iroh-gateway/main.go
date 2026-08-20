@@ -30,7 +30,7 @@ func main() {
 		panic(err)
 	}
 	router, err := iroh.NewRouter(provider, map[string]iroh.ProtocolHandler{
-		blobs.ALPN: blobHandler{store: store.Store()},
+		blobs.ALPN: blobHandler{store: store},
 	}, nil)
 	if err != nil {
 		panic(err)
@@ -79,8 +79,8 @@ func main() {
 	fmt.Printf("GET /collection/%s/note.txt %s\n", collectionRoot.Short(), resp.Status)
 }
 
-func newStore() (*blobs.BytesMap, blobs.Hash, blobs.Hash, error) {
-	store, err := blobs.NewBytesMap()
+func newStore() (*blobs.MemStore, blobs.Hash, blobs.Hash, error) {
+	store, err := blobs.NewMemStore()
 	if err != nil {
 		return nil, blobs.Hash{}, blobs.Hash{}, fmt.Errorf("new bytes map: %w", err)
 	}

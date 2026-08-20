@@ -25,7 +25,7 @@ func main() {
 			panic(err)
 		}
 	}
-	store, err := blobs.NewBytesMap(payload)
+	store, err := blobs.NewMemStore(payload)
 	if err != nil {
 		panic(err)
 	}
@@ -52,7 +52,7 @@ func main() {
 			serverErr <- err
 			return
 		}
-		serverErr <- blobs.ServeBlob(ctx, s, store.Store())
+		serverErr <- blobs.ServeBlob(ctx, s, store)
 	}()
 
 	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))

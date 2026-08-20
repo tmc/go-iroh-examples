@@ -17,7 +17,7 @@ func main() {
 	defer cancel()
 
 	payload := bytes.Repeat([]byte("verified resumable blob transfer\n"), 96)
-	store, err := blobs.NewBytesMap(payload)
+	store, err := blobs.NewMemStore(payload)
 	if err != nil {
 		panic(err)
 	}
@@ -34,7 +34,7 @@ func main() {
 	defer server.Shutdown(ctx)
 
 	serverErr := make(chan error, 4)
-	go serveBlobs(ctx, server, store.Store(), serverErr)
+	go serveBlobs(ctx, server, store, serverErr)
 
 	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
 	if err != nil {
