@@ -1,165 +1,150 @@
 # go-iroh examples
 
-This repository contains small runnable examples for
-[`github.com/tmc/go-iroh`](https://github.com/tmc/go-iroh). The examples build
-against the `github.com/tmc/go-iroh` version pinned in `go.mod`.
+Runnable examples for [`github.com/tmc/go-iroh`](https://github.com/tmc/go-iroh),
+built against the version pinned in `go.mod`.
 
-Run an example from this directory:
+Run one:
 
 ```sh
 go run ./cmd/go-iroh-direct-echo
 ```
 
-Run all default examples and package tests:
+Run all of them:
 
 ```sh
 go test ./... -count=1
 ```
 
+Every example is a test. `go test` runs each one on loopback and checks what it
+prints, so the suite is the examples rather than a description of them. The
+handful that need a public relay, DNS, or pkarr relay skip themselves unless the
+matching switch in [Examples that need the network](#examples-that-need-the-network)
+is set.
+
 ## Progression
+
+The numbers are a reading order, not a version. Start at 01 and stop wherever
+the answer you came for is. Gaps between groups are room for later insertions;
+`cmd/README.md` maps the numbers examples used to have.
+
+### Identity and addressing
 
 | Example | Shows |
 |---|---|
 | `go-iroh-keys` | endpoint identity: `key.SecretKey`, `key.EndpointID`, signatures |
-| `go-iroh-addresses` | address construction with `netaddr.EndpointAddr` |
-| `go-iroh-direct-echo` | two localhost endpoints exchanging a QUIC stream |
+| `go-iroh-addresses` | building a `netaddr.EndpointAddr` from an ID, IPs, and relay URLs |
+| `go-iroh-tickets` | handing an address to a peer as a Rust-compatible ticket, and wrapping one in an application envelope |
+
+### Connections
+
+| Example | Shows |
+|---|---|
+| `go-iroh-direct-echo` | two loopback endpoints and one bidirectional stream |
 | `go-iroh-router-echo` | ALPN dispatch through `iroh.Router` |
-| `go-iroh-memory-discovery` | connecting by endpoint id through `iroh.MemoryLookup` |
-| `go-iroh-manual-incoming` | manual `AcceptIncoming`, `Accepting.ALPN`, and connection verification |
-| `go-iroh-source-validation` | local QUIC Retry source-address validation |
-| `go-iroh-hooks` | observing outbound dials and handshakes with `EndpointHooks` |
-| `go-iroh-metrics` | endpoint counter snapshots after a connection |
-| `go-iroh-multi-alpn` | one router dispatching multiple application protocols |
-| `go-iroh-public-server` | binding a server on a public UDP address and advertising its endpoint address |
-| `go-iroh-connect-public` | connecting to a peer described by endpoint id plus public IP or relay URL |
-| `go-iroh-relay-online` | opting into the default public relay map and waiting for relay connectivity |
-| `go-iroh-dns-resolve` | resolving a published endpoint id through DNS endpoint discovery |
-| `go-iroh-pkarr-publish-resolve` | publishing endpoint data to pkarr and resolving it back |
-| `go-iroh-blobs-transfer` | `sendme`-style BAO-verified blob transfer |
-| `go-iroh-dumbpipe` | `dumbpipe`-style byte piping over an iroh stream |
-| `go-iroh-datagram-frames` | `callme`-style realtime media frame transport with datagrams |
-| `go-iroh-rpc-workqueue` | concurrent postcard RPC work with `irpc.Call` and `irpc.Handler` |
-| `go-iroh-blobs-ranges` | resumable BAO-verified blob range transfer |
-| `go-iroh-watch-observer` | observing endpoint address changes with `watch.Observer` and `watch.Value` |
-| `go-iroh-stream-netconn` | using `Conn.OpenStreamConn`, `Conn.AcceptStreamConn`, and deadlines |
-| `go-iroh-local-infra` | embedding local DNS, relay, and metrics infrastructure packages |
-| `go-iroh-net-report` | reading endpoint network reports, with live relay probing opt-in |
-| `go-iroh-address-filtering` | publishing filtered DNS/pkarr address sets locally |
-| `go-iroh-transport-tuning` | tuning stable QUIC keepalive and idle timeout settings |
-| `go-iroh-stream-listener` | serving stream-backed `net.Listener` values directly and through a router |
-| `go-iroh-graceful-shutdown` | draining router handlers and closing endpoints after SIGINT/SIGTERM |
-| `go-iroh-path-upgrade` | watching selected paths as a relay connection advertises direct candidates |
-| `go-iroh-uni-streams` | publishing independent telemetry events over unidirectional streams |
-| `go-iroh-close-codes` | decoding application close codes and reasons from peer shutdown |
-| `go-iroh-incoming-filter` | router admission control with `RouterConfig.IncomingFilter` and `AcceptingHandler` |
-| `go-iroh-doctor` | printing local relay, net-report, latency, and path diagnostics |
-| `go-iroh-tickets` | wrapping endpoint tickets with app metadata in a base32 envelope |
-| `go-iroh-datagram-vs-stream` | sending small payloads as datagrams and falling back to streams |
-| `go-iroh-ping` | minimal custom protocol over ALPN `iroh/ping/0`: `PING` to `PONG` |
-| `go-iroh-framed-messages` | length-delimited messages over one bidirectional stream |
-| `go-iroh-automerge` | Automerge CRDT sync messages over an iroh protocol handler |
-| `go-iroh-gossip-kv` | signed key-value updates over a joined gossip topic |
-| `go-iroh-blobs-gateway` | HTTP Range gateway for verified blobs fetched over iroh |
+| `go-iroh-multi-alpn` | one router serving two application protocols |
+| `go-iroh-manual-incoming` | owning the accept loop: `AcceptIncoming`, `Accepting.ALPN` |
+| `go-iroh-incoming-filter` | admission control with `RouterConfig.IncomingFilter` and `AcceptingHandler.OnAccepting` |
+| `go-iroh-source-validation` | QUIC Retry source-address validation |
+| `go-iroh-hooks` | observing dials and handshakes with `EndpointHooks` |
+| `go-iroh-metrics` | endpoint counters after a connection |
+| `go-iroh-close-codes` | reading a peer's application close code with `AsApplicationError` |
+| `go-iroh-watch-observer` | `watch.Value` and `Endpoint.WatchAddr`: Current, Updated, Stream |
 
-Examples `01` through `10` use loopback direct paths and avoid live relay/DNS
-dependencies. Examples `11` through `15` demonstrate non-local workflows and
-either print their required environment variables or require an explicit live
-network opt-in.
+### Moving bytes
 
-## Live Examples
+| Example | Shows |
+|---|---|
+| `go-iroh-uni-streams` | one unidirectional stream per event |
+| `go-iroh-datagram-frames` | an application's own framing over QUIC datagrams |
+| `go-iroh-datagram-vs-stream` | `Conn.MaxDatagramSize` and falling back to a stream |
+| `go-iroh-framed-messages` | length-prefixed messages on one bidirectional stream |
+| `go-iroh-stream-netconn` | streams as `net.Conn`, with deadlines |
+| `go-iroh-stream-listener` | `Endpoint.ListenStreams` and `iroh.NewStreamListener` under `net/http` |
+| `go-iroh-transport-tuning` | keepalive and idle timeout with `QUICTransportConfig` |
+| `go-iroh-graceful-shutdown` | draining router handlers on SIGINT before closing |
 
-`go-iroh-public-server` binds UDP on all IPv4 interfaces. Set `IROH_EXAMPLE_PORT` to
-choose the port, `GO_IROH_LIVE_RELAY=1` to also advertise a public relay, and
-`IROH_EXAMPLE_SERVE=1` to keep accepting echo connections.
+### Finding peers
 
-`go-iroh-connect-public` connects to a peer from `go-iroh-public-server` or another iroh
-endpoint:
+| Example | Shows |
+|---|---|
+| `go-iroh-memory-discovery` | `iroh.MemoryLookup`, the in-process lookup a test wants |
+| `go-iroh-mdns-discovery` | finding a peer on the local link, with no infrastructure at all |
+| `go-iroh-address-filtering` | `RelayOnlyFilter`, `IPOnlyFilter`, and a filter of your own |
+| `go-iroh-dns-resolve` | resolving an ID through n0's DNS origin |
+| `go-iroh-pkarr-publish-resolve` | publishing to and resolving from n0's pkarr relay |
+| `go-iroh-relay-online` | the default relay map and `Endpoint.Online` |
+| `go-iroh-path-upgrade` | watching a relayed connection move to a direct path |
+| `go-iroh-net-report` | what `Endpoint.NetReport` says about the local network |
+| `go-iroh-local-infra` | running your own relay and pkarr relay on loopback |
+
+### Protocols
+
+| Example | Shows |
+|---|---|
+| `go-iroh-blobs-transfer` | BAO-verified blob transfer, the `sendme` shape |
+| `go-iroh-blobs-ranges` | resumable byte-range fetches from a blob |
+| `go-iroh-blobs-gateway` | an HTTP Range gateway backed by blobs |
+| `go-iroh-gossip-topic` | broadcasting to a topic with `gossip.Gossip` |
+| `go-iroh-gossip-kv` | signed key-value updates over a gossip topic |
+| `go-iroh-docs-sync` | multi-writer documents and range sync with `docs` |
+| `go-iroh-rpc-workqueue` | `irpc.Call` and `irpc.Handler` |
+| `go-iroh-ping` | the smallest custom protocol: ALPN `iroh/ping/0` |
+| `go-iroh-automerge` | Automerge CRDT sync over a protocol handler |
+
+### Tools
+
+| Example | Shows |
+|---|---|
+| `go-iroh-dumbpipe` | piping stdin to stdout over iroh, wire-compatible with Rust `dumbpipe` |
+| `go-iroh-doctor` | relay status, net report, latencies, and selected path |
+| `go-iroh-public-server` | binding a reachable UDP address and advertising it |
+| `go-iroh-connect-public` | dialing a peer by ID plus public IP or relay URL |
+
+### Configuration
+
+| Example | Shows |
+|---|---|
+| `go-iroh-key-exchange` | choosing TLS key-exchange groups with `WithKeyExchangePolicy` |
+| `go-iroh-custom-transport` | carrying iroh datagrams over a transport of your own |
+
+## Examples that need the network
+
+Everything except the six below runs entirely on loopback. These need something
+outside the machine, take their configuration from flags whose defaults come
+from the environment, and their tests skip with a message naming what to set.
+
+| Example | Flags | Environment |
+|---|---|---|
+| `go-iroh-dns-resolve` | `-endpoint-id`, `-dns-origin` | `IROH_EXAMPLE_ENDPOINT_ID`, `IROH_EXAMPLE_DNS_ORIGIN` |
+| `go-iroh-pkarr-publish-resolve` | `-live` | `GO_IROH_LIVE_PKARR` |
+| `go-iroh-relay-online` | `-live` | `GO_IROH_LIVE_RELAY` |
+| `go-iroh-net-report` | `-live` | `GO_IROH_LIVE_RELAY` |
+| `go-iroh-public-server` | `-port`, `-alpn`, `-serve`, `-live` | `IROH_EXAMPLE_PORT`, `IROH_EXAMPLE_ALPN`, `IROH_EXAMPLE_SERVE`, `GO_IROH_LIVE_RELAY` |
+| `go-iroh-connect-public` | `-peer-id`, `-peer-ip`, `-peer-relay`, `-alpn` | `IROH_EXAMPLE_PEER_ID`, `IROH_EXAMPLE_PEER_IP`, `IROH_EXAMPLE_PEER_RELAY`, `IROH_EXAMPLE_ALPN` |
+
+Flags win over the environment, and `-h` lists each flag with the variable it
+falls back to. Two loopback examples also take configuration:
+`go-iroh-blobs-transfer` takes `-file` (`IROH_EXAMPLE_FILE`) to serve a real file
+instead of its embedded payload, and `go-iroh-dumbpipe` takes `-alpn`, `-bind`,
+`-advertise`, `-no-relay`, `-key`, and `-ticket`.
+
+`go-iroh-doctor` also takes `-live` (`GO_IROH_LIVE_RELAY`), but its default path
+diagnoses an in-process relay and needs no network.
+
+Serve from one machine and dial from another:
 
 ```sh
-IROH_EXAMPLE_PEER_ID=<z32-or-hex-id> \
-IROH_EXAMPLE_PEER_IP=<host:port> \
-go run ./cmd/go-iroh-connect-public
+go run ./cmd/go-iroh-public-server -port 4433 -serve
+go run ./cmd/go-iroh-connect-public -peer-id <id> -peer-ip <host:port>
 ```
 
-Use `IROH_EXAMPLE_PEER_RELAY=<relay-url>` instead of, or in addition to,
-`IROH_EXAMPLE_PEER_IP` for relay-addressed peers.
+## Rust interoperability
 
-`go-iroh-relay-online` connects to the default public relay map only when
-`GO_IROH_LIVE_RELAY=1` is set.
+Ticket strings and several ALPNs are shared with the Rust implementation, so
+these examples interoperate with n0's tools rather than imitating them.
 
-`go-iroh-dns-resolve` resolves a published endpoint id:
-
-```sh
-IROH_EXAMPLE_ENDPOINT_ID=<z32-or-hex-id> go run ./cmd/go-iroh-dns-resolve
-```
-
-Set `IROH_EXAMPLE_DNS_ORIGIN` to query a non-default discovery origin.
-
-`go-iroh-pkarr-publish-resolve` publishes temporary endpoint data to the number0
-pkarr relay and resolves it back only when `GO_IROH_LIVE_PKARR=1` is set.
-
-`go-iroh-net-report` reads the endpoint's most recent net report. The default run
-does not contact live relays and usually reports that no net report is available.
-Set `GO_IROH_LIVE_RELAY=1` to opt into public relay probing:
-
-```sh
-GO_IROH_LIVE_RELAY=1 go run ./cmd/go-iroh-net-report
-```
-
-## Coverage Notes
-
-The examples cover the main public feature groups: endpoint identity and
-addresses, direct connections, routers and ALPN dispatch, manual incoming
-admission, source-address validation, hooks, metrics, memory/DNS/pkarr address
-lookup, address filtering, relay opt-in, network reports, streams, datagrams,
-multi-stream transfers, `watch` observers, stream-backed `net.Conn` values,
-stream-backed `net.Listener` values, `net/http` over iroh, stable transport
-tuning, graceful shutdown, unidirectional streams, application close codes, and
-path observation, local diagnostics, and app-level ticket envelopes.
-`go-iroh-dumbpipe` uses the public `endpointticket` package for Rust-compatible
-endpoint tickets;
-`go-iroh-tickets` wraps those tickets with application metadata.
-
-Some exported APIs are low-level configuration hooks rather than separate
-workflows. `WithKeyLogWriter`, `WithBindAddrOpts`, `WithoutIPTransports`,
-`WithoutRelayTransports`, and `NewSessionCache` are intentionally left to
-package documentation and tests unless an example needs that specific tuning.
-
-Custom transport examples are deferred until the `go-iroh-alt-transports` API
-lands in main. The current main API exposes the low-level datagram hook; the
-branch is still settling the practical address-publication, capability, policy,
-and stream/memory transport shape that a copyable example should teach.
-
-`go-iroh-stream-listener` shows how to adapt individual accepted stream `net.Conn`
-values into a small local listener, serving `net/http` over them with
-go-iroh's public `Endpoint.ListenStreams` and router-native `StreamListener`
-APIs.
-`go-iroh-incoming-filter` shows the router's admission-control surface:
-`RouterConfig.IncomingFilter` to accept or reject connections before ALPN
-negotiation, and `AcceptingHandler.OnAccepting` to inspect a connection before
-it is handled.
-
-`go-iroh-datagram-vs-stream` shows a transport fallback pattern: try a datagram for a
-small message, and use a reliable stream when the datagram send cannot carry the
-payload. The server reads datagrams and accepts streams concurrently on the same
-connection.
-
-## Rust Docs Equivalents
-
-The examples at <https://docs.iroh.computer/examples> currently highlight
-`sendme`, `callme`, and `dumbpipe`.
-
-`go-iroh-blobs-transfer` is the go-iroh equivalent of the `sendme` shape: one endpoint
-serves a content-addressed blob over iroh and the receiver verifies it with the
-blob's BLAKE3/BAO hash. Set `IROH_EXAMPLE_FILE` to serve a real file instead of
-the embedded sample payload.
-
-`go-iroh-dumbpipe` is the go-iroh equivalent of `dumbpipe`: a QUIC stream carries raw
-bytes from one endpoint to another. It speaks Rust dumbpipe's default transport
-protocol: ALPN `DUMBPIPEV0`, the `hello` stream handshake, and
-`iroh-tickets` endpoint tickets.
-
-Run Go as the listener and Rust as the connector:
+`go-iroh-dumbpipe` speaks ALPN `DUMBPIPEV0`, the `hello` stream handshake, and
+`iroh-tickets` endpoint tickets. Go listener, Rust dialer:
 
 ```sh
 go run ./cmd/go-iroh-dumbpipe listen
@@ -167,54 +152,37 @@ go run ./cmd/go-iroh-dumbpipe listen
 printf 'hello from rust\n' | dumbpipe connect <ticket>
 ```
 
-Run Rust as the listener and Go as the connector:
+Rust listener, Go dialer:
 
 ```sh
 dumbpipe listen
-# copy the printed ticket, then in another shell:
 printf 'hello from go\n' | go run ./cmd/go-iroh-dumbpipe connect <ticket>
 ```
 
-Both directions use the Rust endpoint ticket format and have been verified
-against Rust `dumbpipe` on loopback.
-
-The listener advertises a public relay by default, so the printed ticket is
-usable from another machine when relay connectivity is available:
-
-```sh
-go run ./cmd/go-iroh-dumbpipe listen
-```
-
-Use `-no-relay` for direct-only local demos. Use `-bind` and `-advertise` when
-you want to publish a directly reachable UDP address. `GO_IROH_LIVE_RELAY=1`,
-`GO_IROH_DUMBPIPE_BIND_ADDR`, and `GO_IROH_DUMBPIPE_ADVERTISE_ADDR` remain as
-environment-variable aliases for scripted runs.
-
-`go-iroh-datagram-frames` is the transport-side go-iroh equivalent of `callme`: it
-sends small audio/video-labeled frames over QUIC datagrams. go-iroh does not
-provide media capture, encoding, or playback APIs; those belong above the iroh
-transport layer.
-
-## Netcat-Style Pipe
-
-`go-iroh-dumbpipe` also serves as an `nc`-style tool over iroh. Pass `-alpn` to
-speak a protocol of your own instead of Rust dumbpipe's `DUMBPIPEV0`; the
-listener prints an endpoint ticket on stderr and the connector pipes
-stdin/stdout over one bidirectional stream.
-
-```sh
-go run ./cmd/go-iroh-dumbpipe listen -alpn MYAPPV0
-# copy the printed ticket, then in another shell:
-go run ./cmd/go-iroh-dumbpipe connect -alpn MYAPPV0 <ticket>
-```
-
-Use `-key` to keep the same endpoint identity across listener restarts, and
-`-ticket` to update a stable file with the listener's current ticket:
+Both directions have been verified against Rust `dumbpipe` on loopback. The
+listener advertises a public relay by default, so the printed ticket is usable
+from another machine; `-no-relay` keeps it local. `-alpn` pipes bytes under any
+other protocol name and skips the dumbpipe handshake, which is netcat over iroh:
 
 ```sh
 go run ./cmd/go-iroh-dumbpipe listen -alpn MYAPPV0 -key ./pipe.key -ticket ./pipe.ticket
 go run ./cmd/go-iroh-dumbpipe connect -alpn MYAPPV0 "$(cat ./pipe.ticket)"
 ```
 
-Pass `-no-relay` when you want a same-machine or directly routed local-only
-ticket.
+`-key` keeps the endpoint ID stable across restarts; `-ticket` writes the
+current ticket to a file.
+
+Ported from n0's corpus: `go-iroh-blobs-transfer` (sendme), `go-iroh-blobs-gateway`
+(iroh-gateway), `go-iroh-gossip-kv` (iroh-smol-kv), `go-iroh-ping` (iroh-ping),
+`go-iroh-automerge` (iroh-automerge), `go-iroh-doctor` (iroh-doctor), and
+`go-iroh-framed-messages`. `go-iroh-docs-sync` speaks `/iroh-sync/1` and `40`/`41`/`42`
+speak `/iroh-bytes/4`.
+
+## What is not here
+
+Some exported APIs are configuration knobs rather than workflows, and are left
+to package documentation: `WithKeyLogWriter`, `WithBindAddrOpts`,
+`WithoutIPTransports`, `WithoutRelayTransports`, and `NewSessionCache`.
+
+Cross-host examples that need two machines live in `go-iroh-experiments`;
+live Rust interop gates live in the go-iroh repository.
