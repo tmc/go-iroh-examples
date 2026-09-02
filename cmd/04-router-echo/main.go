@@ -1,51 +1,75 @@
+// Command 04-router-echo serves the same echo through a router.
+//
+// [iroh.Router] is the accept loop 03-direct-echo writes out by hand. It
+// accepts connections on an endpoint, reads the ALPN each one negotiated, and
+// runs the [iroh.ProtocolHandler] registered for that ALPN in a goroutine of
+// its own. A handler that returns an error ends only its own connection and the
+// error is logged; a handler that panics is recovered and logged; the accept
+// loop continues either way. 03-direct-echo has to decide all of that itself.
+//
+// The handler map given to [iroh.NewRouter] also registers the endpoint's
+// ALPNs, so there is no [iroh.WithALPNs] here — and passing it as well is an
+// error, because the endpoint must not already be listening when the router
+// starts.
+//
+// One handler for one protocol is the degenerate case, shown here so that the
+// only difference from 03-direct-echo is the accept loop. 10-multi-alpn
+// registers two handlers, which is what a router is for; 36-incoming-filter
+// puts admission control in front of one.
 package main
 
 import (
 	"context"
 	"fmt"
-	"net/netip"
+	"os"
 	"time"
 
 	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
-	"github.com/tmc/go-iroh/netaddr"
 )
 
+const alpn = "go-iroh-examples/router-echo/1"
+
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	const alpn = "go-iroh-examples/router-echo/1"
-
-	server, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	server, err := exampleutil.Bind(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	router, err := iroh.NewRouter(server, map[string]iroh.ProtocolHandler{
 		alpn: exampleutil.Handler{},
 	}, nil)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer router.Shutdown(ctx)
 
-	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	client, err := exampleutil.Bind(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer client.Shutdown(ctx)
 
-	addr := netaddr.NewEndpointAddr(server.ID()).WithIP(server.LocalAddr())
-	conn, err := client.Connect(ctx, addr, alpn)
+	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("connect to %s: %w", server.ID().Short(), err)
 	}
 	defer conn.CloseWithError(0, "")
 
 	reply, err := exampleutil.Exchange(ctx, conn, "router hello")
 	if err != nil {
-		panic(err)
+		return err
 	}
 	fmt.Println(reply)
+	return nil
 }
