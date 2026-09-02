@@ -1,0 +1,4 @@
+# Local workspace pointing at a go-iroh checkout. Each machine's is its own;
+# the module builds against the tagged version without it.
+go.work
+go.work.sum
