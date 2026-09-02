@@ -1,3 +1,33 @@
+// Command 44-iroh-gateway serves iroh blobs over HTTP.
+//
+// This is the Go port of n0's iroh-gateway: an HTTP front door for content that
+// lives in a blob store on some other endpoint. A browser, a curl, or a video
+// player speaks ordinary HTTP to the gateway; the gateway speaks [blobs.ALPN]
+// to a provider it reaches by endpoint ID. Nothing on the HTTP side has to know
+// iroh exists, which is the reason to run one: it is how hash-addressed content
+// reaches clients that can only fetch URLs.
+//
+// Two routes are served. /blob/<hash> returns one blob — the transfer
+// 16-sendme-file does with no HTTP in front of it — and
+// /collection/<root>/<name> returns one named entry from a collection, which is
+// how a directory of files is addressed by a single hash. Both routes hand the
+// fetched bytes to [http.ServeContent], which is what makes Range
+// requests work: the example asks for bytes 6-10 and gets 206 Partial Content
+// with a Content-Range header, the request a media player makes when a viewer
+// seeks.
+//
+// The gateway fetches the whole blob and lets ServeContent slice it, which is
+// the right trade only while blobs are small. A deployment serving large files
+// would map the HTTP range onto a ranged blobs request instead, so that only
+// the requested bytes cross the wire; 20-resumable-chunks shows that request
+// with [blobs.RangeChunks] and [blobs.GetBlobRangeBytes]. Verification is per
+// chunk either way, so a range is checked against the hash without fetching the
+// rest.
+//
+// A gateway is a trust boundary as well as a protocol boundary: its HTTP
+// clients get no proof of anything, because the BLAKE3 verification happens on
+// the gateway's side of the wire. That is a property to be aware of before
+// putting one in front of content whose integrity matters to the client.
 package main
 
 import (
@@ -7,78 +37,90 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/blobs"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	store, collectionRoot, blobHash, err := newStore()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	provider, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	provider, err := exampleutil.Bind(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	router, err := iroh.NewRouter(provider, map[string]iroh.ProtocolHandler{
 		blobs.ALPN: blobHandler{store: store},
 	}, nil)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer router.Shutdown(ctx)
 
-	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	client, err := exampleutil.Bind(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer client.Shutdown(ctx)
 
-	providerAddr := netaddr.NewEndpointAddr(provider.ID()).WithIP(provider.LocalAddr())
+	// The gateway is a plain net/http server whose handler happens to fetch
+	// its bodies over iroh.
 	gateway := httptest.NewServer(gatewayHandler{
 		endpoint: client,
-		provider: providerAddr,
+		provider: exampleutil.Addr(provider),
 	})
 	defer gateway.Close()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gateway.URL+"/blob/"+blobHash.String(), nil)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	req.Header.Set("Range", "bytes=6-10")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("get blob: %w", err)
 	}
 	defer resp.Body.Close()
 	fmt.Printf("GET /blob/%s %s %s\n", blobHash.Short(), resp.Status, resp.Header.Get("Content-Range"))
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	fmt.Printf("range body: %q\n", body)
 
 	req, err = http.NewRequestWithContext(ctx, http.MethodGet, gateway.URL+"/collection/"+collectionRoot.String()+"/note.txt", nil)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("get collection entry: %w", err)
 	}
 	defer resp.Body.Close()
 	fmt.Printf("GET /collection/%s/note.txt %s\n", collectionRoot.Short(), resp.Status)
+	return nil
 }
 
+// newStore builds the content the provider serves: one blob, and a collection
+// naming it. It returns the store, the collection root hash, and the blob hash.
 func newStore() (*blobs.MemStore, blobs.Hash, blobs.Hash, error) {
 	store, err := blobs.NewMemStore()
 	if err != nil {
@@ -89,6 +131,8 @@ func newStore() (*blobs.MemStore, blobs.Hash, blobs.Hash, error) {
 	if err != nil {
 		return nil, blobs.Hash{}, blobs.Hash{}, fmt.Errorf("add blob: %w", err)
 	}
+	// A collection is itself two blobs: the names, and the hash sequence they
+	// index. Both have to be in the store for a peer to fetch the collection.
 	collection := blobs.NewCollection([]blobs.CollectionEntry{{Name: "note.txt", Hash: hash}})
 	if _, err := store.Add(collection.MetadataBytes()); err != nil {
 		return nil, blobs.Hash{}, blobs.Hash{}, fmt.Errorf("add collection metadata: %w", err)
@@ -99,10 +143,12 @@ func newStore() (*blobs.MemStore, blobs.Hash, blobs.Hash, error) {
 	return store, collection.Root(), hash, nil
 }
 
+// blobHandler is the provider side: it answers blobs requests from store.
 type blobHandler struct {
 	store blobs.Store
 }
 
+// Accept implements [iroh.ProtocolHandler].
 func (h blobHandler) Accept(ctx context.Context, conn *iroh.Conn) error {
 	s, err := conn.AcceptStream(ctx)
 	if err != nil {
@@ -111,6 +157,7 @@ func (h blobHandler) Accept(ctx context.Context, conn *iroh.Conn) error {
 	return blobs.ServeBlob(ctx, s, h.store)
 }
 
+// gatewayHandler translates HTTP requests into blobs requests to provider.
 type gatewayHandler struct {
 	endpoint *iroh.Endpoint
 	provider netaddr.EndpointAddr
@@ -141,6 +188,9 @@ func (h gatewayHandler) serveBlob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	// ServeContent handles Range, If-Range, and the 206/416 replies. The blob
+	// is content-addressed and therefore immutable, so it has no modification
+	// time to report.
 	http.ServeContent(w, r, hash.String(), time.Time{}, bytes.NewReader(data))
 }
 

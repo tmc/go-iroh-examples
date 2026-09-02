@@ -1,3 +1,31 @@
+// Command 43-iroh-smol-kv replicates a signed key-value store over gossip.
+//
+// This is the Go port of n0's iroh-smol-kv. It is an application built on
+// gossip rather than an introduction to it: for the primitive itself —
+// subscribing to a [gossip.TopicID], bootstrapping into a swarm from a known
+// address, and reading the event stream — read 45-gossip-topic first. What is
+// here is the layer above.
+//
+// Gossip is a broadcast medium. A message reaches everyone subscribed to the
+// topic, in no fixed order, possibly more than once, and it arrives from
+// whichever neighbor relayed it rather than from its author. So the payload has
+// to stand on its own. Each operation carries its author's public key, a
+// sequence number, and an Ed25519 signature over the encoded body.
+// [kvStore.apply] verifies the signature before it stores anything and keeps
+// the value with the higher sequence number when it already has one for the
+// key. Applying an operation twice, or out of order, therefore reaches the same
+// state as applying it once in order, which is what a medium with those
+// properties requires — and it is why the store needs no leader and no
+// acknowledgement.
+//
+// The endpoint key and the signing key are deliberately distinct. The endpoint
+// key authenticates a connection; the author key authenticates an operation,
+// which outlives the connection it arrived on and will be seen by peers that
+// never spoke to its author.
+//
+// The example runs two nodes on loopback. One subscribes to the topic, the
+// other joins using the first as its bootstrap address, broadcasts one signed
+// set, and the first prints the store it converged on.
 package main
 
 import (
@@ -5,10 +33,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/netip"
+	"os"
 	"sort"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/gossip"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
@@ -16,6 +45,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -24,25 +60,24 @@ func main() {
 
 	a, err := newNode(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer a.close(ctx)
 	b, err := newNode(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer b.close(ctx)
 
 	aTopic, err := a.gossip.Subscribe(ctx, topicID, nil)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("subscribe: %w", err)
 	}
 	defer aTopic.Close()
 
-	aAddr := netaddr.NewEndpointAddr(a.endpoint.ID()).WithIP(a.endpoint.LocalAddr())
-	bTopic, err := b.gossip.SubscribeAndJoin(ctx, topicID, []netaddr.EndpointAddr{aAddr})
+	bTopic, err := b.gossip.SubscribeAndJoin(ctx, topicID, []netaddr.EndpointAddr{exampleutil.Addr(a.endpoint)})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("subscribe and join: %w", err)
 	}
 	defer bTopic.Close()
 
@@ -54,25 +89,28 @@ func main() {
 
 	op, err := b.signSet("color", "blue", 1)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	if err := sender.Broadcast(ctx, op); err != nil {
-		panic(err)
+		return fmt.Errorf("broadcast: %w", err)
 	}
 
 	select {
 	case err := <-applied:
 		if err != nil {
-			panic(err)
+			return err
 		}
 	case <-ctx.Done():
-		panic(ctx.Err())
+		return ctx.Err()
 	}
 
 	fmt.Printf("node %s joined %d neighbor\n", b.endpoint.ID().Short(), len(receiver.Neighbors()))
 	a.store.print()
+	return nil
 }
 
+// node is one member of the swarm: an endpoint carrying gossip, a signing key
+// for the operations it authors, and the store it has converged on.
 type node struct {
 	endpoint *iroh.Endpoint
 	router   *iroh.Router
@@ -82,7 +120,7 @@ type node struct {
 }
 
 func newNode(ctx context.Context) (*node, error) {
-	ep, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	ep, err := exampleutil.Bind(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("bind endpoint: %w", err)
 	}
@@ -94,6 +132,8 @@ func newNode(ctx context.Context) (*node, error) {
 		ep.Shutdown(ctx)
 		return nil, fmt.Errorf("new router: %w", err)
 	}
+	// Separate from the endpoint key: this one signs operations, not
+	// connections.
 	sk, err := key.GenerateSecretKey()
 	if err != nil {
 		r.Shutdown(ctx)
@@ -114,6 +154,8 @@ func (n *node) close(ctx context.Context) {
 	n.signer.Clear()
 }
 
+// signSet encodes a set operation and signs it. The signature covers the
+// encoded body, so a receiver must re-encode the body it decoded to check it.
 func (n *node) signSet(name, value string, seq uint64) ([]byte, error) {
 	body := kvBody{
 		Author: n.signer.Public().String(),
@@ -137,6 +179,8 @@ func (n *node) signSet(name, value string, seq uint64) ([]byte, error) {
 	return out, nil
 }
 
+// applyEvents applies the first operation broadcast on topic. A real node would
+// not return after one; the example does so that it terminates.
 func (n *node) applyEvents(ctx context.Context, topic *gossip.Topic) error {
 	for ev, err := range topic.Events() {
 		if err != nil {
@@ -153,6 +197,7 @@ func (n *node) applyEvents(ctx context.Context, topic *gossip.Topic) error {
 	return ctx.Err()
 }
 
+// kvBody is the signed part of an operation.
 type kvBody struct {
 	Author string `json:"author"`
 	Key    string `json:"key"`
@@ -160,6 +205,7 @@ type kvBody struct {
 	Seq    uint64 `json:"seq"`
 }
 
+// kvOp is what goes on the wire: a body and a signature over its encoding.
 type kvOp struct {
 	Body      kvBody `json:"body"`
 	Signature string `json:"signature"`
@@ -173,6 +219,8 @@ type kvValue struct {
 	Author string
 }
 
+// apply verifies one operation and merges it. It is idempotent and independent
+// of the order operations arrive in, which is what lets it run against gossip.
 func (s kvStore) apply(data []byte) error {
 	var op kvOp
 	if err := json.Unmarshal(data, &op); err != nil {
