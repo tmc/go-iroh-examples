@@ -42,7 +42,6 @@ go test ./... -count=1
 | `20-resumable-chunks` | resumable BAO-verified blob range transfer |
 | `21-memory-mesh` | multi-node loopback mesh broadcast using memory endpoint discovery |
 | `22-watch-observer` | observing endpoint address changes with `watch.Observer` and `watch.Value` |
-| `24-irohcat` | `nc`-style stdin/stdout piping over an iroh stream |
 | `26-stream-netconn-deadline` | using `Conn.OpenStreamConn`, `Conn.AcceptStreamConn`, and deadlines |
 | `27-local-infra` | embedding local DNS, relay, and metrics infrastructure packages |
 | `28-net-report` | reading endpoint network reports, with live relay probing opt-in |
@@ -117,8 +116,8 @@ lookup, address filtering, relay opt-in, network reports, streams, datagrams,
 multi-stream transfers, `watch` observers, stream-backed `net.Conn` values,
 stream-backed `net.Listener` values, `net/http` over iroh, stable transport
 tuning, graceful shutdown, unidirectional streams, application close codes, and
-path observation, local diagnostics, and app-level ticket envelopes. `17-dumbpipe` and
-`24-irohcat` use the public `endpointticket` package for Rust-compatible
+path observation, local diagnostics, and app-level ticket envelopes.
+`17-dumbpipe` uses the public `endpointticket` package for Rust-compatible
 endpoint tickets;
 `38-app-envelope-ticket` wraps those tickets with application metadata.
 
@@ -199,30 +198,24 @@ transport layer.
 
 ## Netcat-Style Pipe
 
-`24-irohcat` is a small `nc`-style tool over iroh. The listener prints an
-endpoint ticket on stderr; the connector takes the ticket and pipes stdin/stdout
-over one bidirectional stream.
+`17-dumbpipe` also serves as an `nc`-style tool over iroh. Pass `-alpn` to
+speak a protocol of your own instead of Rust dumbpipe's `DUMBPIPEV0`; the
+listener prints an endpoint ticket on stderr and the connector pipes
+stdin/stdout over one bidirectional stream.
 
 ```sh
-go run ./cmd/24-irohcat listen
+go run ./cmd/17-dumbpipe listen -alpn MYAPPV0
 # copy the printed ticket, then in another shell:
-go run ./cmd/24-irohcat connect <ticket>
-```
-
-For multi-machine use, run the listener normally; it advertises a public relay
-by default:
-
-```sh
-go run ./cmd/24-irohcat listen
+go run ./cmd/17-dumbpipe connect -alpn MYAPPV0 <ticket>
 ```
 
 Use `-key` to keep the same endpoint identity across listener restarts, and
 `-ticket` to update a stable file with the listener's current ticket:
 
 ```sh
-go run ./cmd/24-irohcat listen -key ./irohcat.key -ticket ./irohcat.ticket
-go run ./cmd/24-irohcat connect "$(cat ./irohcat.ticket)"
+go run ./cmd/17-dumbpipe listen -alpn MYAPPV0 -key ./pipe.key -ticket ./pipe.ticket
+go run ./cmd/17-dumbpipe connect -alpn MYAPPV0 "$(cat ./pipe.ticket)"
 ```
 
-Pass `-no-relay` to either listener when you want a same-machine or directly
-routed local-only ticket.
+Pass `-no-relay` when you want a same-machine or directly routed local-only
+ticket.
