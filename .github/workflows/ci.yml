@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "not gofmt'd:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+      # Every example is self-contained on loopback, so the tests are the
+      # examples. The ones that need a public relay, DNS, or pkarr skip
+      # themselves unless their own GO_IROH_LIVE_* switch is set.
+      - name: test
+        run: go test ./... -count=1
+
+      - name: test -race
+        run: go test ./... -race -count=1
