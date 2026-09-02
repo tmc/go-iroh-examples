@@ -189,13 +189,3 @@ func EnvBool(name string, def bool) bool {
 	}
 	return v
 }
-
-// EnvDuration is [Env] for a duration, parsed by [time.ParseDuration]. An
-// unparseable value yields def.
-func EnvDuration(name string, def time.Duration) time.Duration {
-	v, err := time.ParseDuration(Env(name, ""))
-	if err != nil {
-		return def
-	}
-	return v
-}
