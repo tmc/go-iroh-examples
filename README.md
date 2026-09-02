@@ -41,8 +41,7 @@ go test ./... -count=1
 | `19-rpc-workqueue` | concurrent postcard RPC work with `irpc.Call` and `irpc.Handler` |
 | `20-resumable-chunks` | resumable BAO-verified blob range transfer |
 | `21-memory-mesh` | multi-node loopback mesh broadcast using memory endpoint discovery |
-| `22-watch-observer` | observing endpoint address changes with `watch.Observer` |
-| `23-watch-value` | using `watch.Value` and observer streams directly |
+| `22-watch-observer` | observing endpoint address changes with `watch.Observer` and `watch.Value` |
 | `24-irohcat` | `nc`-style stdin/stdout piping over an iroh stream |
 | `25-http-over-iroh` | serving `net/http` over stream-backed iroh `net.Conn` values |
 | `26-stream-netconn-deadline` | using `Conn.OpenStreamConn`, `Conn.AcceptStreamConn`, and deadlines |
