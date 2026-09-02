@@ -1,29 +1,65 @@
+// Command 15-pkarr-publish-resolve publishes an address and reads it back.
+//
+// This is the write side of endpoint discovery, and pkarr is the mechanism:
+// public-key addressable resource records. An endpoint signs a small DNS packet
+// describing itself with its own secret key and PUTs it to a pkarr relay, which
+// stores packets keyed by the public key that signed them. Anyone holding the
+// endpoint ID can GET it back, and verify it, without trusting the relay.
+// 14-dns-resolve reads the same records over ordinary DNS, because n0's
+// discovery origin serves what its pkarr relay stores.
+//
+// [iroh.PkarrPublisher.Publish] is fire-and-forget: it hands the data to a
+// background goroutine that performs the PUT and republishes on
+// RepublishInterval, so this example resolves in a loop until the record shows
+// up rather than assuming it is there. The published address here is a
+// documentation address (RFC 5737) rather than the host's own, so running the
+// example puts nothing real on the public relay.
+//
+// AddrFilter is the field to notice. It defaults to iroh.RelayOnlyFilter, which
+// keeps direct addresses — often private LAN addresses — out of a world-readable
+// record. This example passes them through so there is something to see; see
+// 29-address-filtering for the choice itself.
+//
+// The pkarr relay is a real service, so nothing happens without -live.
+// 27-local-infra runs this whole round trip against an in-process pkarr relay
+// and needs no network.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"net/netip"
 	"os"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/dns"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
 	"github.com/tmc/go-iroh/netaddr"
 )
 
+// publishedAddr is an RFC 5737 documentation address: publishing it says
+// nothing about the host running the example.
+const publishedAddr = "203.0.113.10:4433"
+
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	if os.Getenv("GO_IROH_LIVE_PKARR") != "1" {
-		fmt.Println("set GO_IROH_LIVE_PKARR=1 to publish to and resolve from the public pkarr relay")
+func run(args []string) error {
+	fs := flag.NewFlagSet("15-pkarr-publish-resolve", flag.ContinueOnError)
+	live := fs.Bool("live", exampleutil.EnvBool("GO_IROH_LIVE_PKARR", false), "publish to and resolve from n0's public pkarr relay ($GO_IROH_LIVE_PKARR)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if !*live {
+		fmt.Println("pass -live or set GO_IROH_LIVE_PKARR=1 to publish to and resolve from the public pkarr relay")
 		return nil
 	}
 
@@ -43,7 +79,7 @@ func run() error {
 	}
 	defer publisher.Close()
 
-	addr := netip.MustParseAddrPort("203.0.113.10:4433")
+	addr := netip.MustParseAddrPort(publishedAddr)
 	publisher.Publish(dns.EndpointDataFromAddr(
 		netaddr.NewEndpointAddr(secret.Public().EndpointID()).WithIP(addr),
 	))
