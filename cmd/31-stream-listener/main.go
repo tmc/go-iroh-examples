@@ -1,3 +1,21 @@
+// Command 31-stream-listener serves ordinary net.Listener code over iroh.
+//
+// A QUIC stream is already a net.Conn, so anything written against
+// net.Listener — net/http, a line protocol, an RPC server — runs unchanged over
+// an iroh endpoint once something turns accepted streams into a listener.
+// go-iroh ships two ways to do that, and the difference is who owns the accept
+// loop:
+//
+//   - [iroh.Endpoint.ListenStreams] takes the endpoint's accept loop and hands
+//     back a net.Listener. Use it when the endpoint speaks one protocol.
+//   - [iroh.NewStreamListener] produces a listener plus an
+//     [iroh.ProtocolHandler] to register with a [iroh.Router]. Use it when the
+//     endpoint multiplexes several ALPNs and only one of them is net.Listener
+//     shaped.
+//
+// The example runs net/http over the first and a line protocol over the second.
+// Neither needs the 50 lines of channel plumbing an application would otherwise
+// write to adapt AcceptStreamConn to net.Listener.
 package main
 
 import (

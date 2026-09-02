@@ -43,7 +43,6 @@ go test ./... -count=1
 | `21-memory-mesh` | multi-node loopback mesh broadcast using memory endpoint discovery |
 | `22-watch-observer` | observing endpoint address changes with `watch.Observer` and `watch.Value` |
 | `24-irohcat` | `nc`-style stdin/stdout piping over an iroh stream |
-| `25-http-over-iroh` | serving `net/http` over stream-backed iroh `net.Conn` values |
 | `26-stream-netconn-deadline` | using `Conn.OpenStreamConn`, `Conn.AcceptStreamConn`, and deadlines |
 | `27-local-infra` | embedding local DNS, relay, and metrics infrastructure packages |
 | `28-net-report` | reading endpoint network reports, with live relay probing opt-in |
@@ -133,9 +132,10 @@ lands in main. The current main API exposes the low-level datagram hook; the
 branch is still settling the practical address-publication, capability, policy,
 and stream/memory transport shape that a copyable example should teach.
 
-`25-http-over-iroh` shows how to adapt individual accepted stream `net.Conn`
-values into a small local listener. `31-stream-listener` uses go-iroh's public
-`Endpoint.ListenStreams` and router-native `StreamListener` APIs.
+`31-stream-listener` shows how to adapt individual accepted stream `net.Conn`
+values into a small local listener, serving `net/http` over them with
+go-iroh's public `Endpoint.ListenStreams` and router-native `StreamListener`
+APIs.
 `36-incoming-filter` shows the router's admission-control surface:
 `RouterConfig.IncomingFilter` to accept or reject connections before ALPN
 negotiation, and `AcceptingHandler.OnAccepting` to inspect a connection before
