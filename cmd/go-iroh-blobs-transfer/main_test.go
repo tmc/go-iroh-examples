@@ -7,8 +7,12 @@ import (
 	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
+// TestRun serves the built-in payload. -file is passed empty rather than left
+// to its default, which comes from IROH_EXAMPLE_FILE: the hash below is the
+// hash of the built-in payload, so an exported IROH_EXAMPLE_FILE would serve a
+// different file and fail a test that is not about files at all.
 func TestRun(t *testing.T) {
-	out, err := exampleutil.Capture(func() error { return run(nil) })
+	out, err := exampleutil.Capture(func() error { return run([]string{"-file="}) })
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

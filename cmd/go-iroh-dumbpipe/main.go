@@ -126,7 +126,7 @@ func demo() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	input := []byte(exampleutil.Env("IROH_EXAMPLE_PIPE_INPUT", "pipe hello\n"))
+	input := []byte("pipe hello\n")
 
 	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(dumbpipeALPN))
 	if err != nil {
