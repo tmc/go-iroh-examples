@@ -46,6 +46,14 @@ func main() {
 	}
 	defer client.Shutdown(ctx)
 
+	// Register the client too. A lookup service is symmetric: the server
+	// resolves the dialing endpoint's ID while it accepts, so an entry that
+	// only ever names the server leaves the reverse lookup with nothing to
+	// return. In go-iroh v0.1.0 that miss crashes the endpoint
+	// (iroh/addresslookup.go:303 ranges over the nil sequence
+	// MemoryLookup.Resolve returns for an unknown ID).
+	lookup.AddEndpointAddr(client.Addr())
+
 	var addr iroh.Item
 	ok := false
 	for item, err := range lookup.Resolve(ctx, server.ID()) {
