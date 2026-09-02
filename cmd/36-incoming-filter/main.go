@@ -24,24 +24,30 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/netip"
+	"os"
 	"sync/atomic"
 	"time"
 
 	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
-	"github.com/tmc/go-iroh/netaddr"
 )
 
+const alpn = "go-iroh-examples/incoming-filter/1"
+
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	const alpn = "go-iroh-examples/incoming-filter/1"
-
-	server, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	server, err := exampleutil.Bind(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	// open gates admission. While true the filter accepts; once false it rejects.
@@ -61,26 +67,26 @@ func main() {
 		alpn: &loggingEchoHandler{},
 	}, &iroh.RouterConfig{IncomingFilter: filter})
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer router.Shutdown(ctx)
 
-	addr := netaddr.NewEndpointAddr(server.ID()).WithIP(server.LocalAddr())
+	addr := exampleutil.Addr(server)
 
-	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	client, err := exampleutil.Bind(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer client.Shutdown(ctx)
 
 	// First connection: admitted, completes an echo exchange.
 	conn, err := client.Connect(ctx, addr, alpn)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	reply, err := exampleutil.Exchange(ctx, conn, "filtered hello")
 	if err != nil {
-		panic(err)
+		return err
 	}
 	fmt.Println("first client reply:", reply)
 	conn.CloseWithError(0, "")
@@ -93,7 +99,7 @@ func main() {
 	second, err := client.Connect(ctx, addr, alpn)
 	if err != nil {
 		fmt.Println("second client refused at connect:", err)
-		return
+		return nil
 	}
 	defer second.CloseWithError(0, "")
 	if _, err := exampleutil.Exchange(ctx, second, "after maintenance"); err != nil {
@@ -101,4 +107,5 @@ func main() {
 	} else {
 		fmt.Println("second client unexpectedly admitted")
 	}
+	return nil
 }
