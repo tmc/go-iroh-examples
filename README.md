@@ -40,7 +40,6 @@ go test ./... -count=1
 | `18-callme-frames` | `callme`-style realtime media frame transport with datagrams |
 | `19-rpc-workqueue` | concurrent postcard RPC work with `irpc.Call` and `irpc.Handler` |
 | `20-resumable-chunks` | resumable BAO-verified blob range transfer |
-| `21-memory-mesh` | multi-node loopback mesh broadcast using memory endpoint discovery |
 | `22-watch-observer` | observing endpoint address changes with `watch.Observer` and `watch.Value` |
 | `26-stream-netconn-deadline` | using `Conn.OpenStreamConn`, `Conn.AcceptStreamConn`, and deadlines |
 | `27-local-infra` | embedding local DNS, relay, and metrics infrastructure packages |
