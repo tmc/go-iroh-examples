@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/netip"
@@ -38,6 +39,11 @@ const defaultALPN = "go-iroh-examples/public-server/1"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
+		// -h is a request for the usage message, which the flag package has
+		// already printed. It is not a failure.
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

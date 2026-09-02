@@ -63,10 +63,16 @@ address.
 `
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		if !errors.Is(err, errUsage) {
-			fmt.Fprintln(os.Stderr, err)
-		}
+	err := run(os.Args[1:])
+	switch {
+	case err == nil:
+	case errors.Is(err, flag.ErrHelp):
+		// The usage text was asked for, so it is the output, not an error.
+		fmt.Print(usageText)
+	case errors.Is(err, errUsage):
+		os.Exit(1)
+	default:
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -76,6 +82,8 @@ func run(args []string) error {
 		return demo()
 	}
 	switch args[0] {
+	case "-h", "-help", "--help":
+		return flag.ErrHelp
 	case "listen":
 		fs := newFlagSet("listen")
 		alpn := fs.String("alpn", dumbpipeALPN, "ALPN to accept")
@@ -85,7 +93,10 @@ func run(args []string) error {
 		noRelay := fs.Bool("no-relay", false, "disable public relay advertising")
 		keyPath := fs.String("key", "", "endpoint secret key file, created if missing")
 		ticketPath := fs.String("ticket", "", "file to write the printed ticket to")
-		if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 0 {
+		if err := fs.Parse(args[1:]); err != nil {
+			return help(err)
+		}
+		if fs.NArg() != 0 {
 			return usage()
 		}
 		useRelay := (*relayFlag && !*noRelay) || exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false)
@@ -101,7 +112,10 @@ func run(args []string) error {
 		fs := newFlagSet("connect")
 		alpn := fs.String("alpn", dumbpipeALPN, "ALPN to negotiate")
 		bind := fs.String("bind", exampleutil.Env("GO_IROH_DUMBPIPE_BIND_ADDR", "[::1]:0"), "UDP address to bind")
-		if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 1 {
+		if err := fs.Parse(args[1:]); err != nil {
+			return help(err)
+		}
+		if fs.NArg() != 1 {
 			return usage()
 		}
 		return connect(*alpn, *bind, fs.Arg(0))
@@ -119,6 +133,16 @@ func newFlagSet(name string) *flag.FlagSet {
 func usage() error {
 	fmt.Fprint(os.Stderr, usageText)
 	return errUsage
+}
+
+// help distinguishes the one flag error that is not a mistake. The subcommand
+// flag sets discard their own output, so -h reaches main as flag.ErrHelp and is
+// answered there with the usage text on stdout.
+func help(err error) error {
+	if errors.Is(err, flag.ErrHelp) {
+		return flag.ErrHelp
+	}
+	return usage()
 }
 
 // demo runs a listener and a dialer in one process, over loopback.
