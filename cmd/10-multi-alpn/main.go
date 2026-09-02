@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strings"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 )
@@ -25,8 +27,8 @@ func main() {
 	}
 
 	router, err := iroh.NewRouter(server, map[string]iroh.ProtocolHandler{
-		echoALPN:  echoHandler{},
-		upperALPN: upperHandler{},
+		echoALPN:  exampleutil.Handler{},
+		upperALPN: exampleutil.Handler{Transform: strings.ToUpper},
 	}, nil)
 	if err != nil {
 		panic(err)
@@ -52,11 +54,11 @@ func main() {
 	}
 	defer upperConn.CloseWithError(0, "")
 
-	echoReply, err := exchange(ctx, echoConn, "multi hello")
+	echoReply, err := exampleutil.Exchange(ctx, echoConn, "multi hello")
 	if err != nil {
 		panic(err)
 	}
-	upperReply, err := exchange(ctx, upperConn, "multi hello")
+	upperReply, err := exampleutil.Exchange(ctx, upperConn, "multi hello")
 	if err != nil {
 		panic(err)
 	}

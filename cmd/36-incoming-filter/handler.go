@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -29,41 +29,5 @@ func (loggingEchoHandler) OnAccepting(ctx context.Context, accepting *iroh.Accep
 
 // Accept handles the verified connection by echoing one message.
 func (loggingEchoHandler) Accept(ctx context.Context, conn *iroh.Conn) error {
-	return echoOnce(ctx, conn)
-}
-
-// echoOnce accepts one stream, reads it to EOF, and writes the bytes back.
-func echoOnce(ctx context.Context, conn *iroh.Conn) error {
-	s, err := conn.AcceptStream(ctx)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-	b, err := io.ReadAll(s)
-	if err != nil {
-		return err
-	}
-	if _, err := s.Write(b); err != nil {
-		return err
-	}
-	return s.Close()
-}
-
-// exchange opens a stream, sends msg, and returns the echoed reply.
-func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
-	s, err := conn.OpenStreamSync(ctx)
-	if err != nil {
-		return "", err
-	}
-	if _, err := s.Write([]byte(msg)); err != nil {
-		return "", err
-	}
-	if err := s.Close(); err != nil {
-		return "", err
-	}
-	b, err := io.ReadAll(s)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+	return exampleutil.Echo(ctx, conn)
 }

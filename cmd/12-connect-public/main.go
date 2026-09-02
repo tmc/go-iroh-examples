@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
 	"github.com/tmc/go-iroh/netaddr"
@@ -74,7 +75,7 @@ func run() error {
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exchange(ctx, conn, "public hello")
+	reply, err := exampleutil.Exchange(ctx, conn, "public hello")
 	if err != nil {
 		return err
 	}

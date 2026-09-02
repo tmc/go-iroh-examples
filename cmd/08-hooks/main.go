@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 )
@@ -45,7 +46,7 @@ func main() {
 		if err != nil {
 			return
 		}
-		_ = echoOnce(ctx, conn)
+		_ = exampleutil.Echo(ctx, conn)
 	}()
 
 	hooks := new(hookLog)
@@ -65,7 +66,7 @@ func main() {
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exchange(ctx, conn, "hooked hello")
+	reply, err := exampleutil.Exchange(ctx, conn, "hooked hello")
 	if err != nil {
 		panic(err)
 	}

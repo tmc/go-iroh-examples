@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 )
@@ -77,7 +78,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	reply, err := exchange(ctx, conn, "filtered hello")
+	reply, err := exampleutil.Exchange(ctx, conn, "filtered hello")
 	if err != nil {
 		panic(err)
 	}
@@ -95,7 +96,7 @@ func main() {
 		return
 	}
 	defer second.CloseWithError(0, "")
-	if _, err := exchange(ctx, second, "after maintenance"); err != nil {
+	if _, err := exampleutil.Exchange(ctx, second, "after maintenance"); err != nil {
 		fmt.Println("second client refused:", err)
 	} else {
 		fmt.Println("second client unexpectedly admitted")
