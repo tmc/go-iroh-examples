@@ -1,18 +1,29 @@
 // Command 39-datagram-vs-stream sends small messages as QUIC datagrams and
 // falls back to streams when a payload is too large for one datagram.
+//
+// A QUIC datagram is unreliable, unordered, and never retransmitted, which is
+// what makes it right for state that is replaced by the next update: a cursor
+// position, a sensor reading, an audio frame. It is also bounded — one datagram
+// is at most one packet — so anything that might exceed the current limit needs
+// a second path.
+//
+// [iroh.Conn.MaxDatagramSize] reports that limit, and reports it as unavailable
+// when the peer never negotiated datagram support. Ask it before sending rather
+// than sending and inspecting the error: the answer also tells an application
+// how to chunk, and it changes over the life of a connection as the path MTU
+// estimate moves.
 package main
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"net/netip"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
-	"github.com/tmc/go-iroh/netaddr"
 )
 
 const alpn = "go-iroh-examples/datagram-vs-stream/1"
@@ -33,10 +44,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	server, err := iroh.Bind(ctx,
-		iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)),
-		iroh.WithALPNs(alpn),
-	)
+	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
 	}
@@ -46,14 +54,13 @@ func run() error {
 	serverErr := make(chan error, 1)
 	go acceptOne(ctx, server, received, serverErr)
 
-	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	client, err := exampleutil.Bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	addr := netaddr.NewEndpointAddr(server.ID()).WithIP(server.LocalAddr())
-	conn, err := client.Connect(ctx, addr, alpn)
+	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
 	if err != nil {
 		return err
 	}
@@ -61,6 +68,15 @@ func run() error {
 
 	small := []byte("fits in one datagram")
 	large := []byte(strings.Repeat("stream fallback ", 5000))
+
+	// The limit itself depends on the path MTU, so print what it decides
+	// rather than the number.
+	n, ok := conn.MaxDatagramSize()
+	fmt.Println("datagrams negotiated:", ok)
+	if ok {
+		fmt.Println("small fits in a datagram:", len(small) <= n)
+		fmt.Println("large fits in a datagram:", len(large) <= n)
+	}
 
 	via, err := sendMessage(ctx, conn, small)
 	if err != nil {
@@ -125,8 +141,13 @@ func readStream(stream *iroh.Stream, received chan<- receivedMessage) {
 	received <- receivedMessage{Via: "stream", Len: len(b)}
 }
 
+// sendMessage picks a datagram when the payload fits in the connection's
+// current limit and a stream otherwise.
 func sendMessage(ctx context.Context, conn *iroh.Conn, b []byte) (string, error) {
-	if err := conn.SendDatagram(b); err == nil {
+	if n, ok := conn.MaxDatagramSize(); ok && len(b) <= n {
+		if err := conn.SendDatagram(b); err != nil {
+			return "", err
+		}
 		return "datagram", nil
 	}
 	stream, err := conn.OpenStreamSync(ctx)
