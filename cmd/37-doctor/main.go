@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 	"github.com/tmc/go-iroh/relay"
@@ -63,7 +64,7 @@ func run() error {
 		}
 	}
 
-	report, ok := waitReport(ctx, server)
+	report, ok := exampleutil.WaitReport(ctx, server)
 	fmt.Println("net report available:", ok)
 	if ok {
 		fmt.Println("udp available:", report.HasUDP())
@@ -100,7 +101,7 @@ func run() error {
 	if err := <-accepted; err != nil {
 		return err
 	}
-	fmt.Println("connection selected:", selectedKind(conn.Paths()))
+	fmt.Println("connection selected:", exampleutil.SelectedPathKind(conn.Paths()))
 	return nil
 }
 
@@ -122,21 +123,6 @@ func relayMode(live bool) (relay.Mode, netaddr.RelayURL, func(), error) {
 	return relay.ModeCustomURLs(relayURL), relayURL, relayHTTP.Close, nil
 }
 
-func waitReport(ctx context.Context, ep *iroh.Endpoint) (iroh.NetReport, bool) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if report, ok := ep.NetReport(); ok {
-			return report, true
-		}
-		select {
-		case <-ctx.Done():
-			return iroh.NetReport{}, false
-		case <-ticker.C:
-		}
-	}
-}
-
 func printRelayLatencies(latencies map[netaddr.RelayURL]time.Duration) {
 	urls := make([]netaddr.RelayURL, 0, len(latencies))
 	for url := range latencies {
@@ -149,20 +135,4 @@ func printRelayLatencies(latencies map[netaddr.RelayURL]time.Duration) {
 	for _, url := range urls {
 		fmt.Printf("latency %s: %s\n", url, latencies[url].Round(time.Millisecond))
 	}
-}
-
-func selectedKind(paths []iroh.PathInfo) string {
-	for _, p := range paths {
-		if !p.Selected {
-			continue
-		}
-		if p.Relayed {
-			return "relay"
-		}
-		if p.HasAddr {
-			return p.Addr.Network()
-		}
-		return "unknown"
-	}
-	return "none"
 }

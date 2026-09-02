@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/relay"
 )
@@ -39,7 +40,7 @@ func run() error {
 	var ok bool
 	if live {
 		reportCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		report, ok = waitReport(reportCtx, ep)
+		report, ok = exampleutil.WaitReport(reportCtx, ep)
 		cancel()
 	} else {
 		report, ok = ep.NetReport()
@@ -57,19 +58,4 @@ func run() error {
 	fmt.Println("global v6:", report.GlobalV6)
 	fmt.Println("preferred relay:", report.PreferredRelay)
 	return nil
-}
-
-func waitReport(ctx context.Context, ep *iroh.Endpoint) (iroh.NetReport, bool) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if report, ok := ep.NetReport(); ok {
-			return report, true
-		}
-		select {
-		case <-ctx.Done():
-			return iroh.NetReport{}, false
-		case <-ticker.C:
-		}
-	}
 }

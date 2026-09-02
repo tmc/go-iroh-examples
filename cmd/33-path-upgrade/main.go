@@ -1,3 +1,17 @@
+// Command 33-path-upgrade watches a connection move from a relay to a direct
+// path.
+//
+// A dial to a peer known only by its relay URL starts relayed: every packet
+// costs a round trip through the relay server. In the background the endpoints
+// probe each other's addresses, and when a direct path works the connection
+// switches to it without interrupting the streams already running on it. That
+// switch is the reason a relay is a fallback rather than a proxy, and
+// [iroh.Conn.WatchPaths] is how an application observes it.
+//
+// The relay here is an in-process [relayserver.Server], so the example needs no
+// network. The direct path is discovered only after each endpoint advertises
+// its own socket with AddExternalAddr, which stands in for the address
+// discovery a real deployment gets from QAD or a lookup service.
 package main
 
 import (
@@ -8,6 +22,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 	"github.com/tmc/go-iroh/relay"
@@ -24,7 +39,7 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
 	relayHTTP := httptest.NewServer(relayserver.New())
@@ -90,31 +105,15 @@ func run() error {
 	if !ok {
 		return fmt.Errorf("path watch closed before initial snapshot")
 	}
-	fmt.Println("initial selected:", selectedKind(initial))
+	fmt.Println("initial selected:", exampleutil.SelectedPathKind(initial))
 
 	server.AddExternalAddr(server.LocalAddr())
 	client.AddExternalAddr(client.LocalAddr())
 
-	upgraded := waitForDirect(ctx, watch, 70*time.Second)
+	upgraded := waitForDirect(ctx, watch, 20*time.Second)
 	fmt.Println("direct upgrade observed:", upgraded)
-	fmt.Println("current selected:", selectedKind(conn.Paths()))
+	fmt.Println("current selected:", exampleutil.SelectedPathKind(conn.Paths()))
 	return nil
-}
-
-func selectedKind(paths []iroh.PathInfo) string {
-	for _, p := range paths {
-		if !p.Selected {
-			continue
-		}
-		if p.Relayed {
-			return "relay"
-		}
-		if p.HasAddr {
-			return p.Addr.Network()
-		}
-		return "unknown"
-	}
-	return "none"
 }
 
 func waitForDirect(ctx context.Context, watch <-chan []iroh.PathInfo, d time.Duration) bool {
@@ -126,7 +125,7 @@ func waitForDirect(ctx context.Context, watch <-chan []iroh.PathInfo, d time.Dur
 			if !ok {
 				return false
 			}
-			if selectedKind(paths) == "ip" {
+			if exampleutil.SelectedPathKind(paths) == "ip" {
 				return true
 			}
 		case <-timer.C:
