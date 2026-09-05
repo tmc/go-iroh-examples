@@ -86,3 +86,4 @@ Added:
 | `go-iroh-qlog-tracing` | `WithQLOG` and `QLOGDir`, added in go-iroh v0.1.1 |
 | `go-iroh-alpn-negotiation` | how a protocol version is agreed, and how a mismatch surfaces |
 | `go-iroh-custom-router` | runtime protocol registration; `iroh.Router` is fixed at construction |
+| `go-iroh-path-selection` | `WithPathSelector` and `WithRelayFirstDial`, neither used anywhere |
