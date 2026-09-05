@@ -83,3 +83,4 @@ Added:
 | `go-iroh-docs-sync` | `docs`, a whole Rust-compatible protocol with no example |
 | `go-iroh-key-exchange` | `WithKeyExchangePolicy`, and `postcard` |
 | `go-iroh-custom-transport` | `WithCustomTransport`, which the README said was deferred |
+| `go-iroh-qlog-tracing` | `WithQLOG` and `QLOGDir`, added in go-iroh v0.1.1 |
