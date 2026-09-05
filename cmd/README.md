@@ -87,3 +87,4 @@ Added:
 | `go-iroh-alpn-negotiation` | how a protocol version is agreed, and how a mismatch surfaces |
 | `go-iroh-custom-router` | runtime protocol registration; `iroh.Router` is fixed at construction |
 | `go-iroh-path-selection` | `WithPathSelector` and `WithRelayFirstDial`, neither used anywhere |
+| `go-iroh-relay-limits` | `relayserver.WithClientRate`, the last unexercised v0.1.1 API |
