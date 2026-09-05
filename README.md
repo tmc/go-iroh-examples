@@ -114,6 +114,7 @@ reason to expect a third.
 | `go-iroh-gossip-topic` | broadcasting to a topic with `gossip.Gossip` |
 | `go-iroh-gossip-kv` | signed key-value updates over a gossip topic |
 | `go-iroh-docs-sync` | multi-writer documents and range sync with `docs` |
+| `go-iroh-docs-live-sync` | `docs.StartLiveSync`: replicas that update as they are written, and a store on disk |
 | `go-iroh-rpc-workqueue` | `irpc.Call` and `irpc.Handler` |
 | `go-iroh-ping` | the smallest custom protocol: ALPN `iroh/ping/0` |
 | `go-iroh-automerge` | Automerge CRDT sync over a protocol handler |

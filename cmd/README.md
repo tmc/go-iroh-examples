@@ -91,3 +91,4 @@ Added:
 | `go-iroh-blobs-store` | persistence, bulk download, tags and GC; the other blobs examples are all in memory |
 | `go-iroh-pkarr-packet` | the `pkarr` package, the signed-packet codec under pkarr publishing |
 | `go-iroh-quic-surface` | the `quicconn` package, which had no example and no other way in |
+| `go-iroh-docs-live-sync` | `docs.StartLiveSync` and `docs.NewFileStore`, which go-iroh-docs-sync names and does not show |
