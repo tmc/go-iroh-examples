@@ -1,0 +1,505 @@
+{
+  "groups": [
+    {
+      "key": "identity-and-addressing",
+      "title": "Identity and addressing"
+    },
+    {
+      "key": "connections",
+      "title": "Connections"
+    },
+    {
+      "key": "observing-a-connection",
+      "title": "Observing a connection"
+    },
+    {
+      "key": "moving-bytes",
+      "title": "Moving bytes"
+    },
+    {
+      "key": "finding-peers",
+      "title": "Finding peers"
+    },
+    {
+      "key": "protocols",
+      "title": "Protocols"
+    },
+    {
+      "key": "tools",
+      "title": "Tools"
+    },
+    {
+      "key": "configuration",
+      "title": "Configuration"
+    }
+  ],
+  "examples": [
+    {
+      "dir": "go-iroh-keys",
+      "group": "identity-and-addressing",
+      "summary": "derives an endpoint's identity from its secret key",
+      "doc": "Command go-iroh-keys derives an endpoint's identity from its secret key.\n\nAn iroh endpoint is named by an Ed25519 public key. There is no registry and\nno certificate authority, so generating a key is the whole of creating an\nidentity, and the [key.EndpointID] a peer dials is that public key. Two\nrenderings of it recur through this repository and through iroh's tooling:\n[key.EndpointID.Short], the abbreviated hex that fits in a log line, and\n[key.EndpointID.Z32], the full z-base-32 form that appears on the wire, in\ntickets, and in DNS records.\n\nThe same key signs. Because the endpoint ID is a public key, a peer that\nknows only the ID can verify anything the endpoint signed, with no key\nexchange of its own; go-iroh-gossip-kv builds its updates on that.\n\nThe seed here is fixed so the printed identity is the same on every run.\nEndpoints that are not examples use [key.GenerateSecretKey], as go-iroh-addresses\ndoes."
+    },
+    {
+      "dir": "go-iroh-addresses",
+      "group": "identity-and-addressing",
+      "summary": "builds the value a peer is dialed with",
+      "doc": "Command go-iroh-addresses builds the value a peer is dialed with.\n\n[netaddr.EndpointAddr] pairs an endpoint ID with the paths that endpoint may\nbe reached over: the ID says who, the paths say where. A path is either a\ndirect UDP socket address or a relay URL, and one address may carry any\nnumber of each — including none, which is still usable when an address-lookup\nservice can supply the paths (go-iroh-memory-discovery).\n\nDirect and relayed paths are alternatives rather than a choice the caller\nmakes. Given both, an endpoint races them and settles on whichever works,\nswitching later if the network changes; go-iroh-path-upgrade watches that happen.\n\nThis example assembles an address by hand, which is what go-iroh-direct-echo does\non loopback and what nothing does in production. There the same value arrives\nfrom elsewhere: packed into a ticket (go-iroh-tickets) or resolved\nfrom DNS or pkarr (go-iroh-dns-resolve, go-iroh-pkarr-publish-resolve)."
+    },
+    {
+      "dir": "go-iroh-tickets",
+      "group": "identity-and-addressing",
+      "summary": "hands an address to a peer as a ticket",
+      "doc": "Command go-iroh-tickets hands an address to a peer as a ticket.\n\nAn endpoint ID names a peer but says nothing about how to reach it. A ticket\nis the normal way to close that gap out of band: it packs the ID together with\nthe relay URLs and direct addresses the peer is currently reachable at into\none base32 string that can be pasted into a chat window. Ticket strings are\nthe same on both sides of the Rust/Go boundary, so a ticket printed here can\nbe dialed by iroh's Rust tooling and the reverse.\n\nThe example does the round trip — encode an address, hand the string over,\ndecode it, and dial — and then shows the second half of the pattern: an\napplication that needs to carry its own fields alongside the address wraps\nthe ticket in its own envelope rather than inventing a new address format."
+    },
+    {
+      "dir": "go-iroh-direct-echo",
+      "group": "connections",
+      "summary": "connects two endpoints and echoes one message",
+      "doc": "Command go-iroh-direct-echo connects two endpoints and echoes one message.\n\nThis is the smallest complete iroh program: bind two endpoints, dial one from\nthe other under an agreed ALPN, open a bidirectional stream, and read the\nreply. Most of the examples that follow are a variation on these thirty\nlines.\n\nThe server owns its accept loop. [iroh.Endpoint.Accept] returns the next\nverified connection and the program decides what to do with it, including\nwhat to do when the handler fails — here the error travels back to run on a\nbuffered channel. That shape suits a server that speaks one protocol;\ngo-iroh-router-echo hands the same loop, and the error handling around it, to\n[iroh.Router].\n\n[iroh.WithALPNs] declares which protocols the endpoint accepts. A dial naming\nan ALPN the server did not declare fails during the TLS handshake, before\neither side has a connection to reject.\n\nBoth endpoints bind IPv6 loopback and the client is told the server's address\noutright, so there is no relay, no discovery, and no network involved.\ngo-iroh-memory-discovery drops the assumption that the client already knows where\nthe server is."
+    },
+    {
+      "dir": "go-iroh-router-echo",
+      "group": "connections",
+      "summary": "serves the same echo through a router",
+      "doc": "Command go-iroh-router-echo serves the same echo through a router.\n\n[iroh.Router] is the accept loop go-iroh-direct-echo writes out by hand. It\naccepts connections on an endpoint, reads the ALPN each one negotiated, and\nruns the [iroh.ProtocolHandler] registered for that ALPN in a goroutine of\nits own. A handler that returns an error ends only its own connection and the\nerror is logged; a handler that panics is recovered and logged; the accept\nloop continues either way. go-iroh-direct-echo has to decide all of that itself.\n\nThe handler map given to [iroh.NewRouter] also registers the endpoint's\nALPNs, so there is no [iroh.WithALPNs] here — and passing it as well is an\nerror, because the endpoint must not already be listening when the router\nstarts.\n\nOne handler for one protocol is the degenerate case, shown here so that the\nonly difference from go-iroh-direct-echo is the accept loop. go-iroh-multi-alpn\nregisters two handlers, which is what a router is for; go-iroh-incoming-filter\nputs admission control in front of one."
+    },
+    {
+      "dir": "go-iroh-multi-alpn",
+      "group": "connections",
+      "summary": "serves two protocols from one endpoint",
+      "doc": "Command go-iroh-multi-alpn serves two protocols from one endpoint.\n\nAn endpoint is one socket and one identity, but it is not one protocol. Every\nentry in the map given to [iroh.NewRouter] registers an\n[iroh.ProtocolHandler] under an ALPN, and each incoming connection goes to\nthe handler whose ALPN it negotiated. go-iroh-router-echo is this example with one\nentry; the second entry is all that separates them.\n\nDispatch is by exact string match, decided in the TLS handshake. There is no\nfallback handler and no prefix matching, so a dial for an unregistered ALPN\nfails before a connection exists, and the two protocols can never see each\nother's bytes. A protocol is versioned by putting the version in the string —\nboth of these end in /1 — and a server that speaks two versions registers\nboth and keeps the old handler until its peers have moved.\n\nThe client opens one connection per protocol because that is what an ALPN is:\nchosen at dial time and fixed for the life of the connection. Carrying\nseveral conversations inside one protocol is the job of streams instead\n(go-iroh-uni-streams, go-iroh-framed-messages)."
+    },
+    {
+      "dir": "go-iroh-alpn-negotiation",
+      "group": "connections",
+      "summary": "agrees on a protocol version at dial time",
+      "doc": "Command go-iroh-alpn-negotiation agrees on a protocol version at dial time.\n\nEvery other example in this repository hard-codes one ALPN ending in /1. A\nprotocol that lives long enough grows a /2, and for a while both versions are\ndeployed at once. ALPN is where the two ends agree which one to speak: the\nserver names the versions it still accepts with [iroh.WithALPNs], the client\nnames the one it wants in [iroh.Endpoint.Connect], and [iroh.Conn.ALPN]\nreports what was agreed. go-iroh-multi-alpn shows one endpoint serving two\nunrelated protocols; this shows two versions of one protocol, and what a\ndialer sees when there is no version in common.\n\nThe negotiation is one-sided by construction. Connect takes a single ALPN, not\na preference list, so a dial offers exactly one protocol and the server either\naccepts it or refuses the connection. There is no server-side preference to\noverride the client's, and the order of the strings given to WithALPNs is not\na ranking: it is the set of protocols the endpoint will accept. Version\nnegotiation is therefore a client-side loop — dial the newest version, and on\nrefusal try the next one down — which is what preferred does here.\n\nA refusal costs a round trip and arrives as an error from Connect, before any\nstream exists. Unlike a key-exchange mismatch (go-iroh-key-exchange), which\nmatches [iroh.ErrTLSHandshakeFailure], an ALPN mismatch has no exported error\nto match: the peer sends TLS alert 120, no_application_protocol, which arrives\nas a QUIC CRYPTO_ERROR 0x178 whose type lives in an internal package. A\nprogram that must tell this failure from an unreachable peer has to match the\nerror text, as noVersionInCommon does, and should treat a text match as a hint\nrather than a contract.\n\nThe practical consequence for a protocol author: keep serving the old ALPN\nuntil the peers that speak it are gone, because a client that only knows the\nold version cannot be told about the new one — it just fails to connect."
+    },
+    {
+      "dir": "go-iroh-custom-router",
+      "group": "connections",
+      "summary": "adds and removes protocols while it is running",
+      "doc": "Command go-iroh-custom-router adds and removes protocols while it is running.\n\n[iroh.Router] fixes its handler map at [iroh.NewRouter]: the type exposes\nonly Endpoint, IsShutdown, and Shutdown, so there is no way to register a\nprotocol later or to stop serving one. When a program needs that, it writes\nits own accept loop; this example writes the smallest one that does. The\nrouter here is a few dozen lines over [iroh.Endpoint.Accept] — a handler map\nguarded by a mutex, and a loop that dispatches on [iroh.Conn.ALPN].\n\nThe subtlety worth the example is that two different sets are at play, and\nonly one of them is dynamic:\n\n  - The endpoint advertises a fixed set of ALPNs in the TLS handshake. It is\n    decided by [iroh.WithALPNs] at bind time. [iroh.Endpoint.SetALPNs] can\n    replace it, but not while an accept loop is running, and this router's\n    loop never stops — so for a running router the advertised set is frozen.\n  - The router dispatches on a subset that changes at runtime.\n\nThe two failure modes look nothing alike, and both appear in the output:\n\n  - An ALPN the endpoint does not advertise is refused during negotiation.\n    The dial itself fails; [iroh.Endpoint.Connect] returns an error whose\n    text ends in \"tls: no application protocol\", the peer's TLS alert 120\n    (no_application_protocol) arriving as CRYPTO_ERROR 0x178. go-iroh exports\n    no sentinel for it, so recognizing it means matching that text.\n  - An advertised ALPN with no handler negotiates fine. The dial succeeds,\n    and the router then closes the connection with a code of its choosing.\n    That one is recognizable: [iroh.AsApplicationError] reports the code and\n    reason, here noHandlerCode and \"no handler for alpn\".\n\nA protocol removed from a live router therefore does not vanish from the\nwire; it becomes a connection that is accepted and then dropped. Advertise\nevery ALPN the router might ever serve, and treat the handler map as the\nauthority on which of them are served now.\n\ngo-iroh-router-echo shows the built-in router, and go-iroh-manual-incoming the\naccept stages this loop collapses."
+    },
+    {
+      "dir": "go-iroh-manual-incoming",
+      "group": "connections",
+      "summary": "accepts a connection one stage at a time",
+      "doc": "Command go-iroh-manual-incoming accepts a connection one stage at a time.\n\n[iroh.Endpoint.Accept], used by go-iroh-direct-echo, runs three stages and hands\nback only the result. This example unrolls them:\n\n  - [iroh.Endpoint.AcceptIncoming] returns an [iroh.Incoming] as soon as a\n    handshake arrives. Nothing is verified yet and the peer's identity is\n    unknown; the choice at this point is [iroh.Incoming.Accept],\n    [iroh.Incoming.Refuse], or [iroh.Incoming.Ignore].\n  - [iroh.Incoming.Accept] continues the handshake and yields an\n    [iroh.Accepting].\n  - [iroh.Accepting.ALPN] reports the negotiated protocol, and\n    [iroh.Accepting.Connection] waits for the verified [iroh.Conn].\n\nTake the stages apart when there is a decision to make between them: dropping\na peer before paying for a handshake, or choosing a code path from the ALPN\nbefore the connection exists. The cheap facts arrive first and the trustworthy\nones last — the remote address is available on the [iroh.Incoming] and is\nonly as good as source validation makes it (go-iroh-source-validation), while the\nremote ID exists only once [iroh.Accepting.Connection] returns.\n\nA router unrolls the same stages internally. go-iroh-incoming-filter exposes both\ndecision points as callbacks, which is the form to prefer over this loop\nunless the sequencing itself is the point."
+    },
+    {
+      "dir": "go-iroh-incoming-filter",
+      "group": "connections",
+      "summary": "demonstrates router admission control",
+      "doc": "Command go-iroh-incoming-filter demonstrates router admission control.\n\nIt shows the two parts of go-iroh's custom-protocol API that decide whether\nand how an incoming connection is handled, before any application data flows:\n\n  - RouterConfig.IncomingFilter inspects each [iroh.Incoming] and returns an\n    admission outcome. It runs at QUIC admission time, before ALPN\n    negotiation, so it is the place to drop unwanted peers as early and\n    cheaply as possible — for a maintenance gate, an allow-list, or\n    back-pressure. The filter may be consulted more than once per connection\n    (for example before and after address validation), so its decision must be\n    a pure function of the [iroh.Incoming] and external state — do not count\n    calls to limit connections.\n  - AcceptingHandler.OnAccepting intercepts the verified-but-not-yet-converted\n    [iroh.Accepting] so a handler can observe the negotiated ALPN and remote\n    address (e.g. to log or annotate) before producing the [iroh.Conn].\n\nThe filter here is a maintenance gate: it accepts while the server is \"open\"\nand rejects once the example flips it \"closed\". The first connection succeeds;\nafter the gate closes, a second connection is refused before reaching a\nhandler."
+    },
+    {
+      "dir": "go-iroh-source-validation",
+      "group": "connections",
+      "summary": "makes a peer prove its source address",
+      "doc": "Command go-iroh-source-validation makes a peer prove its source address.\n\nA QUIC server that answers an initial packet has already spent a handshake on\nan address it has not checked, which turns it into an amplifier for a peer\nthat spoofed the source. The defence is Retry: the server sends back a token\nand goes no further until the client echoes it from the same address, which\nan off-path attacker cannot do. The cost is one extra round trip.\n\n[iroh.WithSourceAddressValidation] is the policy. It receives the unvalidated\nremote address and returns whether to send a Retry. Returning true\nunconditionally, as here, charges every connection that round trip; a server\nwith real traffic returns true only under load, or for addresses it has no\nreason to trust. The policy may be consulted more than once for one\nconnection, so the count printed here is not a count of connections and the\npolicy must not be written as though it were.\n\n[iroh.Incoming.RemoteAddrValidated] reports the result on the accepting side.\nIt is the earliest thing a server knows about a peer — available before the\nhandshake finishes and long before any identity — which is why it is read at\nthe first of the stages go-iroh-manual-incoming unrolls, and why it is the fact\nworth filtering on in go-iroh-incoming-filter."
+    },
+    {
+      "dir": "go-iroh-hooks",
+      "group": "observing-a-connection",
+      "summary": "observes dialing from inside the endpoint",
+      "doc": "Command go-iroh-hooks observes dialing from inside the endpoint.\n\n[iroh.EndpointHooks] is the dialing side's counterpart to the accepting-side\ndecision points in go-iroh-manual-incoming, go-iroh-source-validation, and\ngo-iroh-incoming-filter. [iroh.WithHooks] registers an implementation on an\nendpoint, and its two methods bracket a dial:\n\n  - BeforeConnect runs before [iroh.Endpoint.Connect] resolves an address or\n    sends a packet, with the [netaddr.EndpointAddr] and ALPN the caller\n    asked for. This is intent: the ID in it is the peer the program wants.\n  - AfterHandshake runs once the connection is verified, with the\n    [iroh.Conn]. This is outcome: the ID in it is the peer that proved it\n    holds the matching secret key.\n\nEither may return an error, and the error fails the dial; an AfterHandshake\nerror built by [iroh.RejectHandshake] also closes the connection with an\napplication code the peer can read (go-iroh-close-codes). Hooks are therefore the\nplace for policy that must hold for every dial an endpoint makes — an\nallow-list, a rate limit, an audit trail — rather than a check copied to each\ncall site and forgotten at one of them.\n\nThe pair is not symmetric. Only a dialing endpoint runs BeforeConnect, but\nAfterHandshake runs for accepted connections as well, so a hook installed on\na server sees handshakes it never asked for. The endpoint here only dials.\n\nThe two lines it prints are the same dial before and after, and they match:\nan endpoint ID is a public key, so reaching a peer other than the one dialed\nis a failed handshake rather than a silent substitution."
+    },
+    {
+      "dir": "go-iroh-metrics",
+      "group": "observing-a-connection",
+      "summary": "reads an endpoint's counters after a connection",
+      "doc": "Command go-iroh-metrics reads an endpoint's counters after a connection.\n\n[iroh.Endpoint.Metrics] returns [iroh.Metrics], a snapshot of what the\nendpoint has done: dials started, accepted, and failed on the connecting\nside, the same triple on the accepting side, and nested socket and net-report\ncounters. It is a plain struct returned by value, so reading it is cheap and\ncannot block or perturb a connection in flight.\n\nThe counters are the cheapest answer to \"is this endpoint doing what I think\nit is\". Connects started with none accepted is a reachability problem; accepts\nstarted running ahead of accepts accepted is a peer failing the handshake, not\na server refusing it. This example prints the six fields directly because\nafter one connection there are few enough to read.\n\nA snapshot is also a metrics source: [iroh.Metrics.WriteOpenMetrics] renders\nit as OpenMetrics text, and go-iroh-local-infra collects several sources —\nendpoint, relay server, DNS server — into one\n[github.com/tmc/go-iroh/metrics.Registry] so that a process exports them\ntogether. Reach for that when something scrapes; reach for these fields when\na person is reading.\n\nCounters say how much; they do not say why. When the question is what QUIC\ndid on one connection — which packets were lost, how the congestion window\nmoved, where the handshake spent its time — go-iroh-qlog-tracing records a qlog\ntrace instead."
+    },
+    {
+      "dir": "go-iroh-close-codes",
+      "group": "observing-a-connection",
+      "summary": "reads the code and reason a peer closed with",
+      "doc": "Command go-iroh-close-codes reads the code and reason a peer closed with.\n\nQUIC lets the side that closes a connection attach an application error code\nand a reason string, and both reach the other end. That is how a server says\n\"quota exceeded\" rather than dropping the connection and leaving the client to\nguess between a policy decision, a crash, and a network failure.\n\nThe code arrives as the cause of the connection's context.\n[iroh.AsApplicationError] separates an application close from a transport\nfailure, and its Remote field says which side closed. A client that retries\nshould look at both: a local timeout is worth retrying, a remote code 42 is\nnot.\n\nSee go-iroh-graceful-shutdown for closing an endpoint without cutting off work in\nflight."
+    },
+    {
+      "dir": "go-iroh-watch-observer",
+      "group": "observing-a-connection",
+      "summary": "follows values that change over time",
+      "doc": "Command go-iroh-watch-observer follows values that change over time.\n\ngo-iroh reports mutable state through [watch.Value] and the [watch.Observer]\nit hands out. An observer offers three ways to read the same value, and which\none to use is the whole lesson:\n\n  - Current returns the value now and never blocks.\n  - Updated blocks until the value differs from the last one the caller saw.\n  - Stream ranges over every distinct value until its context ends.\n\nThe example uses a plain [watch.Value] to show the three shapes, then the same\nthree against [iroh.Endpoint.WatchAddr], whose value is the endpoint's own\naddress as paths and external addresses come and go. An endpoint's address is\nnot fixed at bind time, so anything that publishes or shares it wants the\nobserver rather than a single read."
+    },
+    {
+      "dir": "go-iroh-qlog-tracing",
+      "group": "observing-a-connection",
+      "summary": "records a qlog trace of a QUIC connection",
+      "doc": "Command go-iroh-qlog-tracing records a qlog trace of a QUIC connection.\n\ngo-iroh-hooks and go-iroh-metrics watch an endpoint from the outside: hooks report the\ndials and handshakes an application makes, and counters total them up. Both\nanswer \"what did my program do\". Neither answers \"what did QUIC do\" — which\npackets went out, which were lost, how the congestion window moved, why the\nhandshake took as long as it did.\n\nqlog does. It is the QUIC working group's standard trace format, and every\ngo-iroh endpoint installs the tracer, so setting the QLOGDIR environment\nvariable records every connection in the process with no code change at all:\n\n\tQLOGDIR=./traces go run ./cmd/go-iroh-direct-echo\n\nThat is process-wide, which is the problem this example is about. Several\nendpoints in one process — and every example here binds at least two — write\ninto one directory keyed only by connection id, so the traces interleave and\nnothing says which endpoint produced which file. [iroh.WithQLOG] replaces the\nvariable for a single endpoint with a sink: a function called once per\nconnection, before the handshake, returning the [io.WriteCloser] that\nconnection's trace is written to. Returning nil traces that connection not at\nall, which is how a sink samples.\n\nThe two endpoints here take the two shapes a sink comes in. The client uses\n[iroh.QLOGDir], which reproduces QLOGDIR's file layout —\n\u003cconnection id\u003e_client.sqlog — in a directory of its own choosing. The server\nkeeps its trace in memory instead, which is the point of a sink taking an\nio.WriteCloser rather than a path: a trace can go to a ring buffer a support\nbundle picks up, or to an upload, without touching the disk.\n\nBoth files describe one connection from opposite ends. [iroh.QLOGConnection]\ncarries the original destination connection id, which the two ends share, and\nwhether this endpoint dialed; that is what lets the two traces be paired\nafterwards, and it is why the id is part of the API rather than an\nimplementation detail of the file name.\n\nA trace holds frame metadata, loss and congestion events, and the handshake.\nIt does not hold payload bytes, which this example checks rather than\nasserts: the message the two endpoints exchange does not appear in either\ntrace. To see payload bytes at all, log the TLS secrets with\n[iroh.WithKeyLogWriter] and decrypt a capture in Wireshark — a debugging tool\nthat gives away the confidentiality of every connection the endpoint makes.\n\nThe traces are JSON-seq (RFC 7464): one JSON object per record, each preceded\nby a 0x1e byte. qvis (https://qvis.quictools.info) draws them."
+    },
+    {
+      "dir": "go-iroh-uni-streams",
+      "group": "moving-bytes",
+      "summary": "publishes events over unidirectional streams",
+      "doc": "Command go-iroh-uni-streams publishes events over unidirectional streams.\n\nA unidirectional stream carries bytes one way and needs no reply, so the\nsender never waits for the receiver and the receiver never has to correlate a\nresponse. That makes one stream per message a reasonable design for telemetry,\nlogs, and notifications: each message is independently ordered and framed by\nthe stream's own close, so a slow consumer of one message does not stall the\nnext.\n\nCompare go-iroh-direct-echo, where a bidirectional stream is a request and its\nreply, and go-iroh-datagram-frames, where a datagram is used because a late message\nis worth less than a dropped one. A unidirectional stream is the middle case:\nreliable and ordered, but one-way."
+    },
+    {
+      "dir": "go-iroh-datagram-frames",
+      "group": "moving-bytes",
+      "summary": "sends application frames as QUIC datagrams",
+      "doc": "Command go-iroh-datagram-frames sends application frames as QUIC datagrams.\n\nDatagrams are the transport for data that is worthless once it is late: an\naudio packet, a video frame, a cursor position. They are not retransmitted\nand not ordered, so an application that sends more than one kind of thing has\nto put its own header on the wire — here a one-byte kind and a four-byte\nsequence number, which is enough to tell an audio frame from a video frame and\nto notice a gap.\n\nThe framing is this example's own, not a protocol anyone else speaks. What is\nworth copying is the shape: fixed-size header, payload, and a decoder that\nrejects anything too short, because a datagram arrives whole or not at all and\nthere is no stream to resynchronize against.\n\nSee go-iroh-datagram-vs-stream for choosing between the two, and go-iroh-uni-streams for\nthe ordered, reliable alternative."
+    },
+    {
+      "dir": "go-iroh-datagram-vs-stream",
+      "group": "moving-bytes",
+      "summary": "sends small messages as QUIC datagrams and falls back to streams when a payload is too large for one datagram",
+      "doc": "Command go-iroh-datagram-vs-stream sends small messages as QUIC datagrams and\nfalls back to streams when a payload is too large for one datagram.\n\nA QUIC datagram is unreliable, unordered, and never retransmitted, which is\nwhat makes it right for state that is replaced by the next update: a cursor\nposition, a sensor reading, an audio frame. It is also bounded — one datagram\nis at most one packet — so anything that might exceed the current limit needs\na second path.\n\n[iroh.Conn.MaxDatagramSize] reports that limit, and reports it as unavailable\nwhen the peer never negotiated datagram support. Ask it before sending rather\nthan sending and inspecting the error: the answer also tells an application\nhow to chunk, and it changes over the life of a connection as the path MTU\nestimate moves."
+    },
+    {
+      "dir": "go-iroh-framed-messages",
+      "group": "moving-bytes",
+      "summary": "exchanges chess moves as length-prefixed frames",
+      "doc": "Command go-iroh-framed-messages exchanges chess moves as length-prefixed frames.\n\nThis is the Go port of the framed-messages example from n0's iroh-examples,\nand it answers the question a reader has after go-iroh-ping: how do two peers\nsend more than one message on a stream? A QUIC stream is a stream of bytes.\nIt preserves order and delivers everything written to it, but it carries no\nmessage boundaries, so a reader may see one move split across two reads or\ntwo moves in one. 40 avoids the problem by closing its write side after a\nsingle message; a stream that stays open for a conversation cannot.\n\nThe framing is the conventional one: a four-byte big-endian length, then that\nmany bytes of payload. The length arrives from the peer, so [readFrame]\nchecks it against maxMessageSize before allocating, and [writeFrame] refuses\nto write a payload the peer would reject. Both sides then read whole\nmessages, never partial ones.\n\nALPN \"iroh/examples/messages/0\" and the frame layout are the Rust example's.\nA move is four bytes — two squares — and the two halves alternate on one\nstream that stays open for the whole exchange.\n\ngo-iroh-uni-streams takes the other approach: one stream per message, with the\nstream's own close acting as the frame. That needs no length prefix, but it\ncosts a stream per message and leaves messages unordered relative to each\nother. Framing one long-lived stream keeps a single order."
+    },
+    {
+      "dir": "go-iroh-stream-netconn",
+      "group": "moving-bytes",
+      "summary": "uses an iroh stream as a net.Conn",
+      "doc": "Command go-iroh-stream-netconn uses an iroh stream as a net.Conn.\n\n[iroh.Conn.OpenStreamConn] and [iroh.Conn.AcceptStreamConn] wrap one\nbidirectional QUIC stream as a [net.Conn]. That is what lets code written\nagainst the standard library — bufio, encoding/json, net/textproto,\nnet/http, crypto/tls — run over iroh without being told what is underneath.\n\nThe wrapper also changes how cancellation is expressed. An [iroh.Stream]\ntakes a [context.Context] per operation, which is what a program written for\niroh wants; a [net.Conn] instead has SetDeadline, SetReadDeadline, and\nSetWriteDeadline. A passed deadline unblocks a Read or Write with an error\nmatching [os.ErrDeadlineExceeded] that reports Timeout as a [net.Error],\nwhich is what code written for TCP already expects. Deadlines are absolute\ntimes rather than durations, so a loop that reads repeatedly sets a new one\nbefore each call rather than once at the top.\n\nThe exchange is one line up and an uppercased line back, with both ends\nreading through bufio under a five-second deadline. Nothing here is iroh's\nown API except the two calls that produce the connections.\n\nHalf-close comes with the wrapper. [net.Conn] does not declare CloseWrite, so\nthe standard library type-asserts for it — that is how net/http and\nhttputil.ReverseProxy tell a TCP connection they are done sending without\ntearing the connection down. The connection here answers that assertion, so\nthe client ends its write side and the server reads an ordinary EOF while\nthe connection stays open.\n\nCompare go-iroh-stream-listener, which wraps the accept side as a [net.Listener]\nso an existing server loop — net/http included — serves iroh peers\nunchanged."
+    },
+    {
+      "dir": "go-iroh-stream-listener",
+      "group": "moving-bytes",
+      "summary": "serves ordinary net.Listener code over iroh",
+      "doc": "Command go-iroh-stream-listener serves ordinary net.Listener code over iroh.\n\nA QUIC stream is already a net.Conn, so anything written against\nnet.Listener — net/http, a line protocol, an RPC server — runs unchanged over\nan iroh endpoint once something turns accepted streams into a listener.\ngo-iroh ships two ways to do that, and the difference is who owns the accept\nloop:\n\n  - [iroh.Endpoint.ListenStreams] takes the endpoint's accept loop and hands\n    back a net.Listener. Use it when the endpoint speaks one protocol.\n  - [iroh.NewStreamListener] produces a listener plus an\n    [iroh.ProtocolHandler] to register with a [iroh.Router]. Use it when the\n    endpoint multiplexes several ALPNs and only one of them is net.Listener\n    shaped.\n\nThe example runs net/http over the first and a line protocol over the second.\nNeither needs the 50 lines of channel plumbing an application would otherwise\nwrite to adapt AcceptStreamConn to net.Listener."
+    },
+    {
+      "dir": "go-iroh-transport-tuning",
+      "group": "moving-bytes",
+      "summary": "tunes an endpoint's QUIC transport settings",
+      "doc": "Command go-iroh-transport-tuning tunes an endpoint's QUIC transport settings.\n\n[iroh.WithTransportConfig] takes the fields of [iroh.QUICTransportConfig]:\nKeepAlivePeriod, MaxIdleTimeout, InitialPacketSize, and MaxIncomingStreams.\nThose are the settings go-iroh commits to; the rest of the QUIC stack stays\nprivate to the endpoint, so that tuning a program does not pin it to one\nversion's internals. A zero field keeps the default.\n\nKeepAlivePeriod and MaxIdleTimeout are one decision made twice. A connection\nwith nothing on it is closed after MaxIdleTimeout, and the keep-alive is what\nstops it from being idle, so the period must be comfortably shorter than the\ntimeout — 250ms against 3s here. A zero period lets an idle connection lapse,\nwhich is the right choice when reconnecting is cheap; a short timeout gives\nup on a path that is merely slow.\n\nThe example leaves the connection idle for 500ms between two datagram\nexchanges: longer than the keep-alive period, shorter than the idle timeout.\nThe second exchange succeeding is the evidence that the pair is consistent.\nThat pause is also why the program takes about half a second.\n\nThe last two lines are separate from all of the above.\n[iroh.PathMaxIdleTimeout] and [iroh.RelayPathMaxIdleTimeout] are iroh's own\ndefaults for how long one path to a peer is kept, which is not the same\nquestion as how long the QUIC connection over those paths survives. Relay\npaths are held longer than direct ones.\n\nCompare go-iroh-datagram-vs-stream for what a datagram is good for, and\ngo-iroh-path-upgrade for the paths those last two constants are about."
+    },
+    {
+      "dir": "go-iroh-graceful-shutdown",
+      "group": "moving-bytes",
+      "summary": "drains in-flight work before closing an endpoint",
+      "doc": "Command go-iroh-graceful-shutdown drains in-flight work before closing an endpoint.\n\nClosing an endpoint while a handler is still running loses whatever that\nhandler had not finished. The ordered teardown is: stop accepting, let the\nhandlers that are already running reach a stopping point, then close the\nendpoint. [iroh.Router.Shutdown] does the first two, and a handler that\nimplements Shutdown(ctx) is told when to stop taking new work — go-iroh calls\nit as part of the router's drain.\n\nEverything else in this repository closes with a deferred Shutdown, which is\ncorrect for a program that is about to exit anyway. This example is what a\nserver does instead: a signal arrives, the request in flight completes, and\nonly then does the endpoint go away."
+    },
+    {
+      "dir": "go-iroh-memory-discovery",
+      "group": "finding-peers",
+      "summary": "dials a peer known only by its endpoint ID",
+      "doc": "Command go-iroh-memory-discovery dials a peer known only by its endpoint ID.\n\ngo-iroh-direct-echo and go-iroh-router-echo hand the client a complete address because\nthe client already knows where the server is. Outside a loopback example it\ndoes not: an endpoint ID is stable and shareable, while the addresses behind\nit change with the network. An address-lookup service closes that gap, and\n[iroh.MemoryLookup] is the smallest one — a map from ID to address that the\napplication fills in from whatever out-of-band channel it already has, such\nas a ticket it was pasted.\n\n[iroh.WithAddressLookup] registers the lookup with both endpoints, which is\nall it takes: [iroh.Endpoint.Connect] given an address that carries an ID and\nnothing else asks the lookup services for a path and dials the first answer\nthat has one. The client here is never told where the server is.\n\n[iroh.AddressResolver] is one interface with several implementations, and\nonly this one is a map: go-iroh-dns-resolve and go-iroh-pkarr-publish-resolve resolve\nthrough n0's public deployment, go-iroh-local-infra through a pkarr relay in the\nsame process, go-iroh-mdns-discovery over the local link."
+    },
+    {
+      "dir": "go-iroh-mdns-discovery",
+      "group": "finding-peers",
+      "summary": "finds a peer on the local link with multicast DNS",
+      "doc": "Command go-iroh-mdns-discovery finds a peer on the local link with multicast DNS.\n\nAn endpoint ID names a peer but says nothing about where it is. The other\ndiscovery examples close that gap with a service both sides agree on:\ngo-iroh-memory-discovery hands addresses around inside one process, which is what\na test wants; go-iroh-dns-resolve and go-iroh-pkarr-publish-resolve ask n0's public\nDNS and pkarr infrastructure; go-iroh-local-infra runs that same pkarr relay\nprivately on loopback. Every one of them needs something in the middle.\n\n[mdns.Discovery] needs nothing. It announces the local endpoint's direct\naddresses to 224.0.0.251 and caches the announcements other endpoints make,\nso two machines on one link find each other with no relay, no DNS server,\nand no pkarr relay — the reason to reach for it is a LAN, a lab bench, or a\nconference wifi with no route to the internet. The cost is its scope: an\nannouncement travels one multicast hop and reaches nobody beyond it. It\nimplements [iroh.AddressPublisher] and [iroh.AddressResolver], so it\nregisters with [iroh.AddressLookupServices] like any other service and can\nsit alongside pkarr, which covers the peers mDNS cannot see.\n\nThis example runs both halves: one endpoint announces itself, a second one\nresolves it by ID and dials the address that comes back. The announcer\npublishes once. A responder answers the PTR query [mdns.Discovery.Resolve]\nsends with its last announcement, so a peer stays findable between\nannouncements rather than only while it happens to be repeating itself. The\nservice name is per-run rather than the default \"irohv1\", so that the example\nneither hears nor disturbs real iroh peers sharing the link.\n\nmDNS is the one discovery mechanism that depends on the host's networking:\nit needs an interface that is up and multicast-capable, and it needs UDP port\n5353. Where that is unavailable — a sandbox, a container with no multicast —\nthis example says so and exits 0 rather than failing."
+    },
+    {
+      "dir": "go-iroh-address-filtering",
+      "group": "finding-peers",
+      "summary": "publishes only some of an endpoint's addresses",
+      "doc": "Command go-iroh-address-filtering publishes only some of an endpoint's addresses.\n\nAn endpoint usually has several ways to be reached: a home relay URL, direct\nUDP addresses on whatever interfaces it holds, and any custom transport\naddress an application has added. Publishing all of them to a discovery\nservice is rarely what is wanted, because a direct address describes the\nhost's local network and a public pkarr relay is readable by anyone. An\n[iroh.AddrFilter] decides which ones leave the machine: it is handed the full\naddress set and returns the subset to publish, in priority order.\n\n[iroh.PkarrPublisher] applies its filter to every packet it signs. The\ndefault is [iroh.RelayOnlyFilter], which is why an endpoint on the public\ndeployment advertises a relay rather than a LAN address.\n[iroh.IPOnlyFilter] is the other direction — it drops relays and keeps direct\nand custom addresses, so \"ip only\" below still reports a custom address. Any\nfunction of the right shape works too; relayAndCustom is one.\n\nThe three lines are the same address set — a relay URL, an IP, and a custom\naddress — published under each filter to a local [dnsserver.Server] and then\nresolved back, so what is counted is what a peer would actually see.\n\nThe fourth line applies a filter one level up. [iroh.AddressLookupServices]\nis the registry of an endpoint's publishers and resolvers, and its\nSetAddrFilter filters what every registered publisher is handed; a publisher\nwith a filter of its own then applies that as well.\n\nCompare go-iroh-pkarr-publish-resolve, which publishes to n0's public\ninfrastructure, and go-iroh-local-infra, which replaces the default filter with\none that publishes everything because on loopback there is nothing to hide."
+    },
+    {
+      "dir": "go-iroh-dns-resolve",
+      "group": "finding-peers",
+      "summary": "turns an endpoint id into an address using DNS",
+      "doc": "Command go-iroh-dns-resolve turns an endpoint id into an address using DNS.\n\nAn endpoint ID is a public key. It says who a peer is and nothing about where\nit is, which is why go-iroh-public-endpoint has to be handed a UDP address or a\nrelay URL alongside it. Endpoint discovery closes that gap with DNS: an\nendpoint publishes its current relay URL and direct addresses as TXT records\nunder \"_iroh.\u003cz32-endpoint-id\u003e.\u003corigin\u003e\", and anyone holding the ID can look\nthem up. Because the records are signed with the same key the ID names, a\nhostile resolver can withhold an answer but cannot forge one.\n\n[iroh.NewDNSAddressLookup] performs that query against a discovery origin —\n[dns.N0DNSEndpointOriginProd] by default, or -dns-origin for a private\ndeployment. [iroh.DNSAddressLookup.Resolve] returns a stream rather than one\naddress because a lookup can produce several results, each carrying its\n[iroh.Item.Provenance], and a caller may want the first usable one; this\nexample prints it and stops.\n\nThis is the read side. go-iroh-pkarr-publish-resolve is the write side, publishing\nthe records this resolves; go-iroh-memory-discovery is the same ID-to-address step\nwith an in-process directory; go-iroh-local-infra runs both against its own origin.",
+      "flags": [
+        {
+          "name": "endpoint-id",
+          "usage": "published endpoint id to resolve, z32 or hex ($IROH_EXAMPLE_ENDPOINT_ID)",
+          "env": "IROH_EXAMPLE_ENDPOINT_ID"
+        },
+        {
+          "name": "dns-origin",
+          "usage": "discovery origin to query ($IROH_EXAMPLE_DNS_ORIGIN)",
+          "env": "IROH_EXAMPLE_DNS_ORIGIN"
+        }
+      ],
+      "skipEnv": [
+        "IROH_EXAMPLE_ENDPOINT_ID"
+      ]
+    },
+    {
+      "dir": "go-iroh-pkarr-publish-resolve",
+      "group": "finding-peers",
+      "summary": "publishes an address and reads it back",
+      "doc": "Command go-iroh-pkarr-publish-resolve publishes an address and reads it back.\n\nThis is the write side of endpoint discovery, and pkarr is the mechanism:\npublic-key addressable resource records. An endpoint signs a small DNS packet\ndescribing itself with its own secret key and PUTs it to a pkarr relay, which\nstores packets keyed by the public key that signed them. Anyone holding the\nendpoint ID can GET it back, and verify it, without trusting the relay.\ngo-iroh-dns-resolve reads the same records over ordinary DNS, because n0's\ndiscovery origin serves what its pkarr relay stores.\n\n[iroh.PkarrPublisher.Publish] is fire-and-forget: it hands the data to a\nbackground goroutine that performs the PUT and republishes on\nRepublishInterval, so this example resolves in a loop until the record shows\nup rather than assuming it is there. The published address here is a\ndocumentation address (RFC 5737) rather than the host's own, so running the\nexample puts nothing real on the public relay.\n\nAddrFilter is the field to notice. It defaults to iroh.RelayOnlyFilter, which\nkeeps direct addresses — often private LAN addresses — out of a world-readable\nrecord. This example passes them through so there is something to see; see\ngo-iroh-address-filtering for the choice itself.\n\nThe pkarr relay is a real service, so nothing happens without -live.\ngo-iroh-local-infra runs this whole round trip against an in-process pkarr relay\nand needs no network.",
+      "flags": [
+        {
+          "name": "live",
+          "usage": "publish to and resolve from n0's public pkarr relay ($GO_IROH_LIVE_PKARR)",
+          "env": "GO_IROH_LIVE_PKARR"
+        }
+      ],
+      "skipEnv": [
+        "GO_IROH_LIVE_PKARR"
+      ]
+    },
+    {
+      "dir": "go-iroh-relay-online",
+      "group": "finding-peers",
+      "summary": "joins the public relay map and waits to be reachable",
+      "doc": "Command go-iroh-relay-online joins the public relay map and waits to be reachable.\n\n[iroh.Bind] is direct-only: the default relay mode is relay.ModeDisabled, so\na fresh endpoint can be dialed only by a peer that can already reach one of\nits UDP addresses. [relay.ModeDefault] adds n0's public relays, which forward\npackets for endpoints that cannot reach each other directly and give every\nendpoint a stable address that survives a change of network.\n\nJoining is not instant, and this example is about the wait. Relay selection\nprobes the map and picks a home relay by latency, and until that connection\nis up the endpoint has no relay address to advertise.\n[iroh.Endpoint.Online] blocks until it does, which is why a server publishes\nits address after Online rather than straight after Bind.\n[iroh.Endpoint.HomeRelayStatus] is the same state as an observer, for a\nprogram that would rather watch than block.\n\nThe relays are a real service on the internet, so this example does nothing\nuntil -live is passed. go-iroh-local-infra runs the same shape against an\nin-process relay server and needs no network; go-iroh-net-report shows\nwhat the probing measured; go-iroh-public-endpoint folds this opt-in into a server.",
+      "flags": [
+        {
+          "name": "live",
+          "usage": "connect to n0's default public relays ($GO_IROH_LIVE_RELAY)",
+          "env": "GO_IROH_LIVE_RELAY"
+        }
+      ],
+      "skipEnv": [
+        "GO_IROH_LIVE_RELAY"
+      ]
+    },
+    {
+      "dir": "go-iroh-path-upgrade",
+      "group": "finding-peers",
+      "summary": "watches a connection move from a relay to a direct path",
+      "doc": "Command go-iroh-path-upgrade watches a connection move from a relay to a direct\npath.\n\nA dial to a peer known only by its relay URL starts relayed: every packet\ncosts a round trip through the relay server. In the background the endpoints\nprobe each other's addresses, and when a direct path works the connection\nswitches to it without interrupting the streams already running on it. That\nswitch is the reason a relay is a fallback rather than a proxy, and\n[iroh.Conn.WatchPaths] is how an application observes it.\n\nThe relay here is an in-process [relayserver.Server], so the example needs no\nnetwork. The direct path is discovered only after each endpoint advertises\nits own socket with AddExternalAddr, which stands in for the address\ndiscovery a real deployment gets from QAD or a lookup service."
+    },
+    {
+      "dir": "go-iroh-path-selection",
+      "group": "finding-peers",
+      "summary": "replaces the policy that picks a connection's network path",
+      "doc": "Command go-iroh-path-selection replaces the policy that picks a connection's\nnetwork path.\n\nTwo decisions decide which path a connection ends up on. [iroh.WithRelayFirstDial]\ndecides what Connect tries first: relay addresses before direct ones, with the\ndirect addresses still registered as QNT candidates afterwards, so a connection\nthat establishes through a relay can still migrate to a validated direct path.\n[iroh.WithPathSelector] decides where traffic goes once several paths are open.\n\nThe selector is consulted whenever the set of paths or their round-trip times\nchanges: it is handed the currently selected address and every candidate, and\nreturns the one to use, or ok=false to leave the selection alone. The default,\n[iroh.BiasedRttPathSelector], prefers direct paths over relayed ones and the\nlowest round-trip time within a tier — which is why go-iroh-path-upgrade sees a\nconnection leave the relay on its own.\n\nThe relayFirst selector here inverts that: it pins traffic to the relay and\nnever returns a direct address, so no amount of direct-path probing moves the\nconnection off the relay. A deployment might do this to keep traffic on a path\nit can observe, or to hold a stable source address for a peer behind an ACL.\nEvery decision is recorded and printed, next to what the default would have\nchosen from the same candidates.\n\nThe relay is an in-process [relayserver.Server], so the example needs no\nnetwork."
+    },
+    {
+      "dir": "go-iroh-net-report",
+      "group": "finding-peers",
+      "summary": "prints what the endpoint measured about its network",
+      "doc": "Command go-iroh-net-report prints what the endpoint measured about its network.\n\nA net report is the endpoint's view of its own position on the network: did\nan IPv4 or IPv6 UDP round trip complete, what public address did a relay\nobserve the packets coming from, and which relay answered fastest. iroh uses\nit while establishing connections — the observed addresses become candidates\nother peers can try, and the preferred relay becomes the home relay — and\n[iroh.Endpoint.NetReport] exposes the same snapshot to an application, which\nis the first thing to read when a connection stays on a relayed path.\n\nThe measurement is made by probing relay servers, so a direct-only endpoint\nhas nothing to measure against: [iroh.WithNetReport] enables the background\nrefreshes but the report never becomes available. That is what the default\nrun prints. With -live the endpoint joins the public relay map, the probes\nhave somewhere to go, and waitReport polls until the first report lands.\n\ngo-iroh-doctor prints these fields and more against an in-process relay, so it\ngives real numbers with no network; go-iroh-relay-online is the relay opt-in on\nits own; go-iroh-path-upgrade shows the paths a connection picks once the report\nhas supplied candidates.",
+      "flags": [
+        {
+          "name": "live",
+          "usage": "probe n0's public relay map instead of reporting a direct-only endpoint ($GO_IROH_LIVE_RELAY)",
+          "env": "GO_IROH_LIVE_RELAY"
+        }
+      ],
+      "skipEnv": [
+        "GO_IROH_LIVE_RELAY"
+      ]
+    },
+    {
+      "dir": "go-iroh-local-infra",
+      "group": "finding-peers",
+      "summary": "runs a private iroh network on loopback",
+      "doc": "Command go-iroh-local-infra runs a private iroh network on loopback.\n\nThe public deployment has two pieces of infrastructure behind it: relay\nservers, which forward packets for endpoints that cannot reach each other\ndirectly, and a pkarr relay, which stores the signed DNS packets endpoints\npublish so that a peer can be dialed by ID alone. Both ship in this module as\nlibraries, so a test, a CI job, or an air-gapped network can run its own.\n\nThis example starts [relayserver.Server] and [dnsserver.Server] on httptest\nlisteners, points two endpoints at them with [relay.ModeCustomURLs] and a\n[iroh.PkarrPublisher]/[iroh.PkarrResolver] pair, and then dials a peer the\ncaller knows only by endpoint ID: the ID goes to the resolver, the resolver\nreturns an address, and the address is dialed. Nothing leaves the machine.\n\nCompare go-iroh-pkarr-publish-resolve, which does the same against n0's public\ninfrastructure and therefore needs the network."
+    },
+    {
+      "dir": "go-iroh-relay-limits",
+      "group": "finding-peers",
+      "summary": "shapes relayed traffic with a per-client rate limit",
+      "doc": "Command go-iroh-relay-limits shapes relayed traffic with a per-client rate limit.\n\nA relay forwards other people's packets, so an operator wants a ceiling on\nwhat any one client can push through it. [relayserver.WithClientRate] sets\nthat ceiling in bytes per second. The limit is applied where the relay reads\nfrom a client's WebSocket: each accepted relay session gets its own token\nbucket, filled at the configured rate, and the server stops reading from that\nclient until the bucket covers the frame it just read. It is therefore per\nclient session and per direction — the sender's frames into the relay — not a\nbudget shared across the relay.\n\nThe bucket starts full and its burst is the relay's maximum frame size, one\nmebibyte, so the first mebibyte a client sends is never delayed. Only a\ntransfer larger than the burst shows the limit at all, which is why this\nexample sends twice that.\n\nThe limit shapes relayed traffic only. Once the same connection upgrades to a\ndirect path its packets no longer pass through the relay, and the third\ntransfer below runs at full speed over the very relay that throttled the\nfirst two. Relay rate limits protect the relay; they are not a policy on the\napplication.\n\nBoth relays here are in-process [relayserver.Server] instances on httptest\nservers, so the example needs no network. Compare go-iroh-path-upgrade for\nthe path migration on its own and go-iroh-local-infra for a fuller private\ndeployment.",
+      "flags": [
+        {
+          "name": "bytes",
+          "usage": "payload size in bytes ($IROH_EXAMPLE_BYTES)",
+          "env": "IROH_EXAMPLE_BYTES"
+        },
+        {
+          "name": "rate",
+          "usage": "limited relay's per-client rate in bytes per second ($IROH_EXAMPLE_RATE)",
+          "env": "IROH_EXAMPLE_RATE"
+        }
+      ]
+    },
+    {
+      "dir": "go-iroh-blobs-transfer",
+      "group": "protocols",
+      "summary": "serves one blob and fetches it whole",
+      "doc": "Command go-iroh-blobs-transfer serves one blob and fetches it whole.\n\nThis is the shape of n0's sendme: one endpoint holds some content, another\nknows only its BLAKE3 hash, and the bytes are verified as they arrive. The\n[blobs] package implements the raw subset of the iroh-blobs provider protocol\non ALPN [blobs.ALPN], so a blob served here can be fetched by the Rust\ntooling and the reverse.\n\nVerification is the reason to use this rather than a stream of bytes. A blob\nis named by the root of its BLAKE3 hash tree, and the provider sends enough\nof that tree alongside the data for [blobs.GetBlobBytes] to check each chunk\nagainst the hash the caller already had. Content that does not hash to what\nwas asked for is rejected by the receiver, so the provider does not have to\nbe trusted or even identified.\n\nThe provider side is [blobs.ServeBlob] over one stream, reading from a\n[blobs.Store]. This example uses [blobs.NewMemStore]; a real provider would\nkeep blobs on disk, and nothing else about the exchange changes.\n\nCompare go-iroh-blobs-ranges, which asks for a chunk range of a blob instead\nof all of it. Read the two together: a resumed download is this same request\nwith a range in it, and a range carries the hash-tree nodes needed to verify\nit on its own.\n\nThe -file flag, or IROH_EXAMPLE_FILE, serves a file instead of the built-in\npayload.",
+      "flags": [
+        {
+          "name": "file",
+          "usage": "file to serve instead of the built-in payload ($IROH_EXAMPLE_FILE)",
+          "env": "IROH_EXAMPLE_FILE"
+        }
+      ]
+    },
+    {
+      "dir": "go-iroh-blobs-ranges",
+      "group": "protocols",
+      "summary": "fetches a blob in two chunk ranges",
+      "doc": "Command go-iroh-blobs-ranges fetches a blob in two chunk ranges.\n\nA transfer that fails halfway should not have to start over. An iroh-blobs\nrequest carries the range of the blob it wants, so a receiver that already\nholds the first part asks only for the rest: [blobs.GetBlobRangeBytes] takes\na [blobs.ChunkRanges] and the verified blob size and returns those bytes.\n\nThe ranges are chunk-aligned because the verification is. Content is hashed\nas a BLAKE3 tree over [blobs.ChunkSize] blocks, and the provider sends the\ntree nodes covering the requested range next to the data, so each range is\nchecked against the same root hash on its own. Nothing has to be trusted or\ncarried over from the session that fetched the earlier part.\n\nThis example asks for chunks [0,2) on one connection and the remainder on a\nsecond connection, which is the shape of a resumed download: all the second\nfetch has is the hash, the blob size, and how far the first one got. Both\npieces are then concatenated and compared with the original.\n\nCompare go-iroh-blobs-transfer, which requests the whole blob over the same protocol\nfrom the same kind of store. Read the two together: the difference between a\ndownload and a resumed download is the range in the request."
+    },
+    {
+      "dir": "go-iroh-blobs-store",
+      "group": "protocols",
+      "summary": "keeps blobs on disk, downloads them from several providers, and collects the ones nothing names",
+      "doc": "Command go-iroh-blobs-store keeps blobs on disk, downloads them from several\nproviders, and collects the ones nothing names.\n\nThe other blobs examples use [blobs.NewMemStore], which is enough to show a\ntransfer and nothing else: a memory store never fills a disk, never survives\na restart, and never has to decide which blobs to throw away. This example is\nabout the store rather than the wire, and uses [blobs.NewFSStore], the\non-disk store, for all three of those questions.\n\nPersistence. A [blobs.FSStore] is a directory: blob data under data/, the\nBLAKE3 outboard under outboard/, and the tag table beside them. It holds no\nopen file handles between calls, so \"closing\" it is dropping the value. The\nexample writes a blob, forgets the store, opens the same directory again, and\nreads the blob back through the tag that named it.\n\nDownloading from more than one provider. [blobs.NewDownloader] takes a\n[blobs.Sink] to write into and a [blobs.BlobConnector] to reach providers\nwith, and races a list of addresses for a hash: the first provider to deliver\nverified content wins and the rest are cancelled. Content addressing is what\nmakes this safe to do without trusting any of them — every provider is\noffering the same hash, and a provider that sends something else fails\nverification rather than corrupting the store.\n\nTags and garbage collection. A blob on disk is alive only while something\nnames it. A persistent tag ([blobs.FSStore.SetTag]) is a durable name that\noutlives the process; a [blobs.TempTag] is a process-local name that lasts\nuntil it is closed, and exists to cover the window between storing a blob and\nnaming it. That window is why [blobs.BlobWriter.Commit] and\n[blobs.Downloader.Download] return a TempTag rather than a bare hash: with\nonly a hash in hand, a concurrent [blobs.FSStore.GC] could delete the blob\nbefore the caller could tag it. [blobs.FSStore.GCWithEvents] then deletes\nevery blob that no tag reaches, reporting [blobs.GCEvent] progress and a\n[blobs.GCResult] count.\n\nThe -dir flag, or IROH_EXAMPLE_DIR, chooses the store directory. The default\nis a temporary directory that is removed on exit, so a plain run leaves\nnothing behind; point -dir at a real path and run twice to watch the tagged\nblob outlive the process.",
+      "flags": [
+        {
+          "name": "dir",
+          "usage": "store directory, default a temporary one removed on exit ($IROH_EXAMPLE_DIR)",
+          "env": "IROH_EXAMPLE_DIR"
+        }
+      ]
+    },
+    {
+      "dir": "go-iroh-blobs-gateway",
+      "group": "protocols",
+      "summary": "serves iroh blobs over HTTP",
+      "doc": "Command go-iroh-blobs-gateway serves iroh blobs over HTTP.\n\nThis is the Go port of n0's iroh-gateway: an HTTP front door for content that\nlives in a blob store on some other endpoint. A browser, a curl, or a video\nplayer speaks ordinary HTTP to the gateway; the gateway speaks [blobs.ALPN]\nto a provider it reaches by endpoint ID. Nothing on the HTTP side has to know\niroh exists, which is the reason to run one: it is how hash-addressed content\nreaches clients that can only fetch URLs.\n\nFour routes are served, the same set as the Rust gateway. /blob/\u003chash\u003e\nreturns one blob — the transfer go-iroh-blobs-transfer does with no HTTP in\nfront of it — and /collection/\u003croot\u003e/\u003cname\u003e returns one named entry from a\ncollection, which is how a directory of files is addressed by a single hash.\nBoth resolve against one provider the gateway was configured with, so the URL\nnames content and nothing else.\n\n/ticket/\u003cticket\u003e and /ticket/\u003cticket\u003e/\u003cname\u003e lift that restriction. A blob\nticket ([blobs.Ticket]) packs a provider's address together with the hash and\nthe blob format, so a URL carrying one names both what to fetch and who from,\nand the gateway serves content it had no prior connection to. The format in\nthe ticket decides what /ticket/\u003cticket\u003e means: a raw ticket is one blob, and\na hash-sequence ticket is a collection, answered with its index so that the\nentries can be linked to under /ticket/\u003cticket\u003e/\u003cname\u003e.\n\nThe blob routes hand the fetched bytes to [http.ServeContent], which is what\nmakes Range requests work: the example asks for bytes 6-10 and gets 206\nPartial Content with a Content-Range header, the request a media player makes\nwhen a viewer seeks.\n\nThe gateway fetches the whole blob and lets ServeContent slice it, which is\nthe right trade only while blobs are small. A deployment serving large files\nwould map the HTTP range onto a ranged blobs request instead, so that only\nthe requested bytes cross the wire; go-iroh-blobs-ranges shows that request\nwith [blobs.RangeChunks] and [blobs.GetBlobRangeBytes]. Verification is per\nchunk either way, so a range is checked against the hash without fetching the\nrest.\n\nA gateway is a trust boundary as well as a protocol boundary: its HTTP\nclients get no proof of anything, because the BLAKE3 verification happens on\nthe gateway's side of the wire. That is a property to be aware of before\nputting one in front of content whose integrity matters to the client."
+    },
+    {
+      "dir": "go-iroh-gossip-topic",
+      "group": "protocols",
+      "summary": "broadcasts one message to a three-node gossip topic",
+      "doc": "Command go-iroh-gossip-topic broadcasts one message to a three-node gossip topic.\n\nPoint-to-point connections do not scale to a group: sending the same bytes to\nevery member means one stream per member, and every member has to know every\nother member first. [gossip.Gossip] replaces that with a topic. Endpoints\nsubscribe to a 32-byte [gossip.TopicID], the subscribers organize themselves\ninto a random overlay, and a message handed to [gossip.Topic.Broadcast] is\nrelayed along that overlay until every subscriber has it. The sender does not\naddress anyone, does not learn the membership, and does not scale its own\nwork with the size of the group.\n\nThis example makes the relaying visible by wiring three nodes into a chain.\nA is seeded with nothing, B is seeded with A's address, and C is seeded with\nB's address, so C has never heard of A. A then calls Broadcast once. B\nreceives the message directly from A, and C receives the same message\nrelayed by B, at PlumTree round 1 — the message reached a node its sender\nnever had a connection to. The example prints that A still has no connection\nstate for C afterwards.\n\nEverything the caller learns arrives on [gossip.Topic.Events]: NeighborUp and\nNeighborDown as the overlay changes shape, and Received for application\nmessages. The event carries who relayed it ([gossip.Event.DeliveredFrom]),\nhow far it travelled ([gossip.Event.Round]), and whether it came over the\nepidemic overlay or straight from a neighbor ([gossip.Event.Scope]).\n[gossip.Topic.Neighbors] is the same membership as a snapshot, for code that\nwants to ask rather than watch.\n\nA program that only needs to know that it is connected to somebody can wait\non [gossip.Topic.Joined], or subscribe and wait in one call with\n[gossip.Gossip.SubscribeAndJoin]; both read the neighbor set, so they run\nalongside an Events iterator. This example wants more than that — it waits\nfor four particular links so the broadcast cannot race the overlay into\nexistence — and a specific neighbor is only visible as a NeighborUp event.\n\nThe topic runs over the iroh-gossip ALPN, so each endpoint serves\n[gossip.Gossip.Handler] from a router and interoperates with Rust iroh-gossip\npeers on the same topic. Nothing here leaves the machine: the three endpoints\nare on IPv6 loopback and address each other directly."
+    },
+    {
+      "dir": "go-iroh-gossip-kv",
+      "group": "protocols",
+      "summary": "replicates a signed key-value store over gossip",
+      "doc": "Command go-iroh-gossip-kv replicates a signed key-value store over gossip.\n\nThis is the Go port of n0's iroh-smol-kv. It is an application built on\ngossip rather than an introduction to it: for the primitive itself —\nsubscribing to a [gossip.TopicID], bootstrapping into a swarm from a known\naddress, and reading the event stream — read go-iroh-gossip-topic first. What is\nhere is the layer above.\n\nGossip is a broadcast medium. A message reaches everyone subscribed to the\ntopic, in no fixed order, possibly more than once, and it arrives from\nwhichever neighbor relayed it rather than from its author. So the payload has\nto stand on its own. Each operation carries its author's public key, a\nsequence number, and an Ed25519 signature over the encoded body.\n[kvStore.apply] verifies the signature before it stores anything and keeps\nthe value with the higher sequence number when it already has one for the\nkey. Applying an operation twice, or out of order, therefore reaches the same\nstate as applying it once in order, which is what a medium with those\nproperties requires — and it is why the store needs no leader and no\nacknowledgement.\n\nThe endpoint key and the signing key are deliberately distinct. The endpoint\nkey authenticates a connection; the author key authenticates an operation,\nwhich outlives the connection it arrived on and will be seen by peers that\nnever spoke to its author.\n\nThe example runs two nodes on loopback. One subscribes to the topic, the\nother joins using the first as its bootstrap address, broadcasts one signed\nset, and the first prints the store it converged on."
+    },
+    {
+      "dir": "go-iroh-docs-sync",
+      "group": "protocols",
+      "summary": "replicates a multi-writer document between two peers",
+      "doc": "Command go-iroh-docs-sync replicates a multi-writer document between two peers.\n\nThe [docs] package is the Go port of iroh-docs. A document is a namespace of\nsigned key-value entries: anyone holding the namespace secret may write to\nit, every replica holds the whole entry set, and two replicas reconcile with\neach other over the /iroh-sync/1 ALPN whenever they can talk. No replica is\nthe authority, which is what distinguishes a document from the\nrequest/response protocols the earlier examples serve.\n\nAn entry is identified by the triple (namespace, author, key) rather than by\nthe key alone. That is what makes the document multi-writer: when two\nauthors write the same key, the result is two entries and reconciliation\nkeeps both, so the application chooses between them instead of one write\nsilently losing a race. Within a single author a later timestamp replaces an\nearlier one, and an entry shadows every longer key of the same author that\nstarts with it — the mechanism upstream uses for prefix deletion, and the\nreason document keys are usually kept prefix-free.\n\nReconciliation is range based. [docs.Sync] and [docs.Handler] exchange\nfingerprints over ranges of the key space ([docs.MemoryStore.Fingerprint])\nand descend only into the ranges whose fingerprints disagree, so a sync\ncosts what the difference costs rather than what the document costs. The\nsecond sync below exchanges the range holding the one entry that changed,\nnot the five the replicas agree on. Equal full-range fingerprints are also\nhow a caller checks convergence without comparing entry sets.\n\nA [docs.DocTicket] is what a peer needs to join: a capability for the\nnamespace — a read capability is the namespace ID, a write capability is the\nnamespace secret — plus the addresses to sync with. It is the\ndocument-shaped analog of the endpoint ticket in go-iroh-tickets, and\n[docs.Register] adds its decoder to an [endpointticket.Registry] for\nprograms that accept more than one kind of ticket.\n\nAn entry names its value by BLAKE3 hash and length; the bytes themselves\nlive in a blob store and move over the iroh-blobs protocol (go-iroh-blobs-transfer),\nnot over this one. Syncing a document is therefore cheap and content is\nfetched on demand: below, each replica ends up with all five entries but\nonly with the bytes it wrote itself.\n\nThis example syncs on demand to keep the sequence observable.\n[docs.StartLiveSync] drives the same reconciliation from an iroh-gossip\ntopic instead, so that replicas push entries as they are written."
+    },
+    {
+      "dir": "go-iroh-rpc-workqueue",
+      "group": "protocols",
+      "summary": "dispatches concurrent RPC jobs over one connection",
+      "doc": "Command go-iroh-rpc-workqueue dispatches concurrent RPC jobs over one connection.\n\n[irpc] is the smallest thing on top of iroh that behaves like RPC: a request\nand its responses are postcard-encoded and length-framed on one QUIC stream.\n[irpc.Call] opens the stream, sends the typed request, and returns an\niterator over the typed responses. [irpc.Handler] is the other half: it\ndecodes the request and hands application code an [irpc.Responder].\n\nOne stream per call is what makes a work queue out of it. The three jobs here\nare dispatched at the same time on a single connection, each on its own\nstream, so a slow job does not delay the ones behind it and there is no need\nfor request IDs or a multiplexing layer of one's own. Results are printed as\nthey finish, not in submission order.\n\nA responder may send more than one response, which is how a long job reports\nprogress: each r.Send is another value from the caller's iterator, and the\niterator ends when the handler returns. This example sends exactly one\nresponse per job, the ordinary request/response case.\n\nChoose this over framing messages by hand — go-iroh-framed-messages — when the\npayloads are Go values and a request maps to a response. Choose a stream when\nthe payload is bytes with no natural message boundary."
+    },
+    {
+      "dir": "go-iroh-ping",
+      "group": "protocols",
+      "summary": "answers a ping over an iroh connection",
+      "doc": "Command go-iroh-ping answers a ping over an iroh connection.\n\nThis is the Go port of n0's iroh-ping, and it speaks that program's protocol\nbyte for byte: ALPN \"iroh/ping/0\", the four bytes PING from the dialer, the\nfour bytes PONG back. There is no length prefix and no version byte because\nthere is nothing to frame — the dialer closes its write side after PING, so\nthe responder's read ends exactly where the request does. A Rust iroh-ping\nclient can be pointed at a Go endpoint serving this ALPN, and this program's\nclient half can be pointed at a Rust listener; neither side can tell.\n\nThat is the reason to read this example rather than go-iroh-router-echo, which\nhas the same shape — one [iroh.ProtocolHandler] registered with\n[iroh.NewRouter], which dispatches by exact ALPN, and one\n[iroh.Conn.OpenStreamSync] on the dialing side. What differs is that the ALPN\nand the payloads belong to somebody else. An ALPN is an opaque byte string,\nso interoperating with an existing implementation is a matter of using its\nstring and writing its bytes.\n\nClosing the write side is what ends the message here, which works because\nthere is exactly one message. go-iroh-framed-messages keeps the stream open for\nseveral and therefore has to frame them."
+    },
+    {
+      "dir": "go-iroh-automerge",
+      "group": "protocols",
+      "summary": "synchronizes an Automerge document between peers",
+      "doc": "Command go-iroh-automerge synchronizes an Automerge document between peers.\n\nThis is the Go port of n0's iroh-automerge. Automerge is a CRDT library with\nits own sync protocol: each side keeps a sync state, repeatedly asks it for\nthe next message to send, feeds it whatever the peer sent, and stops when\nneither side has anything left to say. That protocol is specified over a\nreliable, ordered, bidirectional byte pipe and says nothing about where the\npipe comes from.\n\nAn iroh stream is such a pipe, which is the point of the example: carrying a\nforeign sync protocol over iroh needs no adapter. The transport supplies\nidentity — the peer is its public key — plus NAT traversal and encryption,\nand the protocol supplies everything above that. The only glue is the glue\nevery message protocol needs, a length prefix. Here it is eight bytes\nlittle-endian to match the Rust example, and a length of zero means \"I am\ndone\", which is how each side learns the other has converged.\n\nThe two halves are [initiateSync] and [respondSync]. They differ only in who\nspeaks first, because the dialer must send before the responder has anything\nto answer. The sender starts with five keys and the receiver starts empty;\nafter the exchange the receiver prints what it now holds.\n\ngithub.com/automerge/automerge-go is the only third-party dependency in this\nrepository. Compare go-iroh-framed-messages, which frames messages of its own\ndesign over the same kind of stream, and go-iroh-gossip-kv, which reaches\nconvergence a different way: broadcast operations with a last-writer-wins\nrule rather than a point-to-point sync protocol."
+    },
+    {
+      "dir": "go-iroh-dumbpipe",
+      "group": "tools",
+      "summary": "pipes stdin to stdout over an iroh connection",
+      "doc": "Command go-iroh-dumbpipe pipes stdin to stdout over an iroh connection.\n\nIt speaks the wire protocol of n0's dumbpipe: ALPN \"DUMBPIPEV0\", a five-byte\n\"hello\" written by the dialer before any payload, then raw bytes in both\ndirections until either side closes. A ticket printed by \"go-iroh-dumbpipe listen\"\ncan be given to the Rust \"dumbpipe connect\", and the reverse, so this is the\nexample to read when the question is cross-implementation compatibility.\n\n-alpn changes the negotiated protocol. Any value other than DUMBPIPEV0 skips\nthe handshake and pipes bytes directly, which is the whole of what a\nnetcat-over-iroh looks like: the pipe is not the interesting part, the ALPN\nand the ticket are.\n\nWith no arguments it runs both halves in one process over loopback, so that\n\"go run ./cmd/go-iroh-dumbpipe\" is a complete demo. Otherwise:\n\n\tgo-iroh-dumbpipe listen [-alpn v] [-no-relay] [-bind addr:port] [-advertise addr:port] [-key file] [-ticket file]\n\tgo-iroh-dumbpipe connect [-alpn v] [-bind addr:port] \u003cendpoint-ticket\u003e\n\nThe listener advertises a public relay by default, so the printed ticket is\ndialable from another machine. -no-relay keeps everything on loopback.",
+      "flags": [
+        {
+          "name": "alpn",
+          "usage": "ALPN to accept"
+        },
+        {
+          "name": "bind",
+          "usage": "UDP address to bind ($GO_IROH_DUMBPIPE_BIND_ADDR)",
+          "env": "GO_IROH_DUMBPIPE_BIND_ADDR"
+        },
+        {
+          "name": "advertise",
+          "usage": "direct address to put in the printed ticket ($GO_IROH_DUMBPIPE_ADVERTISE_ADDR)",
+          "env": "GO_IROH_DUMBPIPE_ADVERTISE_ADDR"
+        },
+        {
+          "name": "relay",
+          "usage": "advertise a public relay address"
+        },
+        {
+          "name": "no-relay",
+          "usage": "disable public relay advertising"
+        },
+        {
+          "name": "key",
+          "usage": "endpoint secret key file, created if missing"
+        },
+        {
+          "name": "ticket",
+          "usage": "file to write the printed ticket to"
+        },
+        {
+          "name": "alpn",
+          "usage": "ALPN to negotiate"
+        },
+        {
+          "name": "bind",
+          "usage": "UDP address to bind ($GO_IROH_DUMBPIPE_BIND_ADDR)",
+          "env": "GO_IROH_DUMBPIPE_BIND_ADDR"
+        }
+      ]
+    },
+    {
+      "dir": "go-iroh-doctor",
+      "group": "tools",
+      "summary": "reports what an endpoint can see of the network",
+      "doc": "Command go-iroh-doctor reports what an endpoint can see of the network.\n\nIt is the Go counterpart of n0's iroh-doctor: the questions to ask when a\nconnection is not behaving. Whether the endpoint reached a home relay, what\n[iroh.NetReport] says about UDP and about the addresses the network reports\nback, the round-trip time to each relay, and which path a live connection\nactually selected.\n\nBy default it diagnoses against an in-process [relayserver.Server], so it runs\nanywhere and the numbers describe loopback. Pass -live (or set\nGO_IROH_LIVE_RELAY=1) to run the same checks against n0's public relays, which\nis where the answers are worth reading.",
+      "flags": [
+        {
+          "name": "live",
+          "usage": "diagnose against n0's public relays instead of an in-process one ($GO_IROH_LIVE_RELAY)",
+          "env": "GO_IROH_LIVE_RELAY"
+        }
+      ]
+    },
+    {
+      "dir": "go-iroh-public-endpoint",
+      "group": "tools",
+      "summary": "binds a reachable endpoint and dials one",
+      "doc": "Command go-iroh-public-endpoint binds a reachable endpoint and dials one.\n\nThe other examples bind an ephemeral loopback port, which is all a demo\nrunning both halves in one process needs. Two machines need more, and this\nexample is both halves of that: \"listen\" binds a server other machines can\nreach, and \"connect\" dials one given its address.\n\nA server that other machines dial needs a fixed UDP port, so the address\nsurvives a restart and a firewall rule can name it, and an address a dialer\ncan be handed out of band. \"listen\" prints that address in pieces — endpoint\nID, ALPN, direct paths, relay paths — because those are the fields \"connect\"\ntakes as flags. For the same address as one pasteable string, see\ngo-iroh-tickets.\n\nThose pieces are what a [netaddr.EndpointAddr] is made of: an endpoint ID,\nwhich names the peer and is the only part that authenticates it, plus the\ndirect UDP addresses and relay URLs that say where to look for it. The ID\ncomes from -peer-id, the coordinates from -peer-ip and -peer-relay, which is\nhow addressing works before any discovery service is involved.\n\nEither coordinate alone is enough. A direct address is dialed straight; a\nrelay URL is a rendezvous, and reaching a peer through one requires the\ndialing endpoint to speak to that relay too, which is why -peer-relay also\nputs the URL into [relay.ModeCustomURLs]. Passing both lets iroh race them\nand then upgrade to the direct path.\n\n[iroh.Bind] is direct-only by default: a UDP socket and no relay. On the\nlistening side -live adds [relay.ModeDefault] and waits for\n[iroh.Endpoint.Online], so that the printed relay paths give a dialer a way\nin when the direct address sits behind a NAT. go-iroh-relay-online is that\nopt-in on its own.\n\nWithout -serve \"listen\" prints the address and exits. With -serve it accepts\nconnections and echoes each one, which is what \"connect\" expects to find on\nthe other end.\n\n\tgo-iroh-public-endpoint listen [-port n] [-alpn v] [-serve] [-live]\n\tgo-iroh-public-endpoint connect [-peer-id id] [-peer-ip host:port] [-peer-relay url] [-alpn v]\n\ngo-iroh-dns-resolve and go-iroh-pkarr-publish-resolve build the same address\nfrom an ID alone by asking a discovery service; go-iroh-tickets carries it as\none pasteable ticket. Reach for those once the coordinates stop fitting on a\ncommand line.",
+      "flags": [
+        {
+          "name": "port",
+          "usage": "UDP port to bind on every IPv4 interface ($IROH_EXAMPLE_PORT)",
+          "env": "IROH_EXAMPLE_PORT"
+        },
+        {
+          "name": "alpn",
+          "usage": "ALPN to accept ($IROH_EXAMPLE_ALPN)",
+          "env": "IROH_EXAMPLE_ALPN"
+        },
+        {
+          "name": "serve",
+          "usage": "keep accepting echo connections instead of exiting after printing the address ($IROH_EXAMPLE_SERVE)",
+          "env": "IROH_EXAMPLE_SERVE"
+        },
+        {
+          "name": "live",
+          "usage": "advertise a public relay and wait for relay connectivity ($GO_IROH_LIVE_RELAY)",
+          "env": "GO_IROH_LIVE_RELAY"
+        },
+        {
+          "name": "peer-id",
+          "usage": "endpoint id of the peer to dial, z32 or hex ($IROH_EXAMPLE_PEER_ID)",
+          "env": "IROH_EXAMPLE_PEER_ID"
+        },
+        {
+          "name": "peer-ip",
+          "usage": "direct UDP address of the peer, host:port ($IROH_EXAMPLE_PEER_IP)",
+          "env": "IROH_EXAMPLE_PEER_IP"
+        },
+        {
+          "name": "peer-relay",
+          "usage": "relay URL the peer is reachable through ($IROH_EXAMPLE_PEER_RELAY)",
+          "env": "IROH_EXAMPLE_PEER_RELAY"
+        },
+        {
+          "name": "alpn",
+          "usage": "ALPN to negotiate, matching the listener's ($IROH_EXAMPLE_ALPN)",
+          "env": "IROH_EXAMPLE_ALPN"
+        }
+      ],
+      "skipEnv": [
+        "GO_IROH_LIVE_RELAY",
+        "IROH_EXAMPLE_PEER_ID",
+        "IROH_EXAMPLE_PEER_IP",
+        "IROH_EXAMPLE_PEER_RELAY"
+      ]
+    },
+    {
+      "dir": "go-iroh-key-exchange",
+      "group": "configuration",
+      "summary": "selects the TLS key-exchange groups an endpoint offers",
+      "doc": "Command go-iroh-key-exchange selects the TLS key-exchange groups an endpoint offers.\n\nEvery iroh connection is a QUIC connection whose TLS 1.3 handshake\nauthenticates both peers by endpoint ID. That handshake must also agree on a\nkey-exchange group, and the choice decides how long the traffic stays secret:\na classical X25519 exchange captured today can be opened later by a quantum\ncomputer, while the hybrid X25519MLKEM768 exchange cannot.\n[iroh.WithKeyExchangePolicy] chooses which groups the endpoint offers, and\n[iroh.Conn.KeyExchangeGroup] reports which one the handshake picked.\n\nThe policy is not a peer allow-list. [iroh.KeyExchangePolicy] names four sets\nof groups — [iroh.KeyExchangeDefault], [iroh.KeyExchangeClassical],\n[iroh.KeyExchangePreferPQ], and [iroh.KeyExchangePQOnly] — and the only way it\ncan refuse a peer is by sharing no group with it. Deciding which peers may\nconnect at all is a different job, done by an incoming filter; see\ngo-iroh-incoming-filter.\n\nThe example dials two servers, one on the default policy and one on\nKeyExchangePQOnly, from clients on the default and the classical policy. Three\nof the four dials complete, and the printed group shows what each negotiated:\nthe default policy prefers X25519MLKEM768 but keeps X25519 as a fallback, so a\nclassical peer still connects to it. The fourth dial, classical to PQ-only,\nhas no group in common and fails in the handshake. That failure arrives as an\nerror from [iroh.Endpoint.Connect], not as a dropped connection later, so a\ncaller sees it at the dial site and can report it. It matches\n[iroh.ErrTLSHandshakeFailure], which is how a program tells a policy mismatch\nfrom every other reason a dial can fail without reading error text.\n\nChoose KeyExchangePQOnly for a closed deployment where every peer is known to\nspeak MLKEM and downgrade must be impossible; the cost is that an older peer\ncannot connect at all. Choose KeyExchangeClassical only to interoperate with a\npeer that has no MLKEM support. Otherwise leave the policy at its zero value.\n\nThe application payload here is encoded with [postcard], go-iroh's\nRust-compatible codec, rather than JSON. It is the same codec that carries\ntickets and iroh-docs entries, so an application that already links go-iroh\ngets a compact, byte-exact-with-Rust encoding without adding a dependency or a\nsecond wire format. postcard is not self-describing: both ends must agree on\nthe fields and their order, which is why the encoding is small and why a\nmismatch is an error rather than a silently missing field."
+    },
+    {
+      "dir": "go-iroh-custom-transport",
+      "group": "configuration",
+      "summary": "runs an iroh connection over a transport of its own",
+      "doc": "Command go-iroh-custom-transport runs an iroh connection over a transport of its own.\n\nAn endpoint normally reaches its peers over UDP, either directly or through a\nrelay. [iroh.WithCustomTransport] adds a third kind of carrier: any code that\ncan move a datagram from one endpoint to another. Everything above it is\nunchanged — the same QUIC connection, the same endpoint-ID authentication, the\nsame path selection — so a Bluetooth link, a serial line, an overlay network\nthat already exists, or, as here, a queue inside one process becomes something\niroh connections can run on. Choose it when the carrier is one iroh does not\nknow about; it is not a way to tune UDP, which is what\n[iroh.WithTransportConfig] is for.\n\nA transport implements [iroh.CustomTransport]: Send hands a datagram to the\ncarrier, and Serve delivers what arrives back to the endpoint as an\n[iroh.CustomDatagram]. Peers are named by [netaddr.CustomAddr], a freely\nchosen 64-bit transport id plus opaque bytes that only the transport\ninterprets; the id distinguishes transports that share a network, and n0\nkeeps a registry of well-known values. A transport that also implements\n[iroh.AdvertisingCustomTransport] returns its local addresses from\nLocalCustomAddrs, which puts them in [iroh.Endpoint.Addr] so that tickets and\ndiscovery carry them like any other address. Without that method the peer has\nto be told the [netaddr.CustomAddr] some other way.\n\nThe transport here is a bus: a map from address to a buffered Go channel, with\ncounters. Two endpoints attach to it, both with [iroh.WithoutIPTransports] and\n[iroh.WithoutRelayTransports] so that the bus is the only way for them to\nreach each other, and one dials the other by the address the bus advertised.\nThe output shows what the connection ran on: the advertised address is a\ncustom one, the selected path is \"custom\", and the bus counters move while the\napplication exchange happens. Nothing binds a socket and nothing leaves the\nprocess.\n\nTwo obligations fall on a real implementation and are visible below. Send must\ncopy the packet it is given, because the endpoint reuses the buffer as soon as\nSend returns. And Serve must keep running when recv reports false: a false\nresult means the endpoint's receive queue is full, which is a dropped\ndatagram, not a reason to stop the transport. Both directions may lose\ndatagrams — QUIC handles the loss."
+    }
+  ]
+}

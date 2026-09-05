@@ -17,15 +17,29 @@ go test ./... -count=1
 
 Every example is a test. `go test` runs each one on loopback and checks what it
 prints, so the suite is the examples rather than a description of them. The
-handful that need a public relay, DNS, or pkarr relay skip themselves unless the
-matching switch in [Examples that need the network](#examples-that-need-the-network)
-is set.
+suite also holds the examples to the conventions this file describes and checks
+that the tables below still list the tree, so a page about these examples can
+be generated instead of transcribed; `examples.json` is that generated
+description. The handful that need a public relay, DNS, or pkarr relay skip
+themselves unless the matching switch in
+[Examples that need the network](#examples-that-need-the-network) is set.
+
+Each `main.go` is a whole program: it imports go-iroh and the standard library
+and nothing from this repository, so a reader who copies one file has copied
+something that compiles. The tests do share helpers, because a reader copies
+the example and not its test. `go test` checks that too.
 
 ## Progression
 
-The numbers are a reading order, not a version. Start at 01 and stop wherever
-the answer you came for is. Gaps between groups are room for later insertions;
-`cmd/README.md` maps the numbers examples used to have.
+The tables below are the reading order. Start at the top and stop wherever the
+answer you came for is.
+
+They are also where that order is defined: `internal/catalog` reads the
+progression from this section, and `go test` fails if the tree and these tables
+disagree. An example is added by creating its directory and adding a row, and
+moved by moving its row. Nothing in a directory name encodes a position, so
+`cmd/README.md` records the two renamings there have been and there is no
+reason to expect a third.
 
 ### Identity and addressing
 
@@ -42,13 +56,21 @@ the answer you came for is. Gaps between groups are room for later insertions;
 | `go-iroh-direct-echo` | two loopback endpoints and one bidirectional stream |
 | `go-iroh-router-echo` | ALPN dispatch through `iroh.Router` |
 | `go-iroh-multi-alpn` | one router serving two application protocols |
+| `go-iroh-alpn-negotiation` | agreeing on a protocol version, and what a mismatch looks like |
+| `go-iroh-custom-router` | dispatching ALPNs yourself, so protocols can come and go at runtime |
 | `go-iroh-manual-incoming` | owning the accept loop: `AcceptIncoming`, `Accepting.ALPN` |
 | `go-iroh-incoming-filter` | admission control with `RouterConfig.IncomingFilter` and `AcceptingHandler.OnAccepting` |
 | `go-iroh-source-validation` | QUIC Retry source-address validation |
+
+### Observing a connection
+
+| Example | Shows |
+|---|---|
 | `go-iroh-hooks` | observing dials and handshakes with `EndpointHooks` |
 | `go-iroh-metrics` | endpoint counters after a connection |
 | `go-iroh-close-codes` | reading a peer's application close code with `AsApplicationError` |
 | `go-iroh-watch-observer` | `watch.Value` and `Endpoint.WatchAddr`: Current, Updated, Stream |
+| `go-iroh-qlog-tracing` | per-endpoint QUIC traces with `WithQLOG`, `QLOGDir`, and `QLOGDIR` |
 
 ### Moving bytes
 
@@ -74,8 +96,10 @@ the answer you came for is. Gaps between groups are room for later insertions;
 | `go-iroh-pkarr-publish-resolve` | publishing to and resolving from n0's pkarr relay |
 | `go-iroh-relay-online` | the default relay map and `Endpoint.Online` |
 | `go-iroh-path-upgrade` | watching a relayed connection move to a direct path |
+| `go-iroh-path-selection` | replacing the policy that chooses a path, and dialing relay-first |
 | `go-iroh-net-report` | what `Endpoint.NetReport` says about the local network |
 | `go-iroh-local-infra` | running your own relay and pkarr relay on loopback |
+| `go-iroh-relay-limits` | rate-limiting a relay you run |
 
 ### Protocols
 
@@ -83,6 +107,7 @@ the answer you came for is. Gaps between groups are room for later insertions;
 |---|---|
 | `go-iroh-blobs-transfer` | BAO-verified blob transfer, the `sendme` shape |
 | `go-iroh-blobs-ranges` | resumable byte-range fetches from a blob |
+| `go-iroh-blobs-store` | an on-disk store, downloads from several providers, tags and GC |
 | `go-iroh-blobs-gateway` | an HTTP Range gateway backed by blobs |
 | `go-iroh-gossip-topic` | broadcasting to a topic with `gossip.Gossip` |
 | `go-iroh-gossip-kv` | signed key-value updates over a gossip topic |
@@ -123,8 +148,10 @@ from the environment, and their tests skip with a message naming what to set.
 Flags win over the environment, and `-h` lists each flag with the variable it
 falls back to. Two loopback examples also take configuration:
 `go-iroh-blobs-transfer` takes `-file` (`IROH_EXAMPLE_FILE`) to serve a real file
-instead of its embedded payload, and `go-iroh-dumbpipe` takes `-alpn`, `-bind`,
-`-advertise`, `-no-relay`, `-key`, and `-ticket`.
+instead of its embedded payload, and `go-iroh-dumbpipe` takes `-alpn`, `-bind`
+(`GO_IROH_DUMBPIPE_BIND_ADDR`), `-advertise`
+(`GO_IROH_DUMBPIPE_ADVERTISE_ADDR`), `-relay`, `-no-relay`, `-key`, and
+`-ticket`.
 
 `go-iroh-doctor` also takes `-live` (`GO_IROH_LIVE_RELAY`), but its default path
 diagnoses an in-process relay and needs no network.
@@ -173,14 +200,22 @@ current ticket to a file.
 Ported from n0's corpus: `go-iroh-blobs-transfer` (sendme), `go-iroh-blobs-gateway`
 (iroh-gateway), `go-iroh-gossip-kv` (iroh-smol-kv), `go-iroh-ping` (iroh-ping),
 `go-iroh-automerge` (iroh-automerge), `go-iroh-doctor` (iroh-doctor), and
-`go-iroh-framed-messages`. `go-iroh-docs-sync` speaks `/iroh-sync/1` and `40`/`41`/`42`
-speak `/iroh-bytes/4`.
+`go-iroh-framed-messages`. `go-iroh-docs-sync` speaks `/iroh-sync/1`, and the three
+blobs examples speak `/iroh-bytes/4`.
+
+`go-iroh-framed-messages` is checked against the Rust implementation rather than
+described as compatible with it: `interop/` builds n0's own `framed-messages`
+crate as a live peer, and both directions are tested. See [interop/README.md](interop/README.md).
 
 ## What is not here
 
 Some exported APIs are configuration knobs rather than workflows, and are left
-to package documentation: `WithKeyLogWriter`, `WithBindAddrOpts`,
-`WithoutIPTransports`, `WithoutRelayTransports`, and `NewSessionCache`.
+to package documentation: `WithBindAddrOpts` and `NewSessionCache`. `WithNATPMP`
+needs a gateway to talk to, and every example here runs on loopback.
+`WithDNSResolver` is a wrapper around `WithAddressLookup`, which
+`go-iroh-dns-resolve` uses directly.
 
-Cross-host examples that need two machines live in `go-iroh-experiments`;
-live Rust interop gates live in the go-iroh repository.
+Cross-host examples that need two machines live in `go-iroh-experiments`. The
+compatibility matrix that runs unmodified upstream binaries in pinned Docker
+images lives in the go-iroh repository; `interop/` here is the narrower thing,
+one protocol checked against upstream's own code.
