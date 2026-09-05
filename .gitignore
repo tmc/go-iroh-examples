@@ -2,3 +2,6 @@
 # the module builds against the tagged version without it.
 go.work
 go.work.sum
+
+# Build output from the Rust interoperability harness.
+interop/target/
