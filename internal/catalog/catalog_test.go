@@ -3,7 +3,10 @@ package catalog
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -15,6 +18,9 @@ var update = flag.Bool("update", false, "rewrite examples.json from the tree")
 const (
 	root   = "../.."
 	module = "github.com/tmc/go-iroh-examples"
+
+	// goIrohModule is what the examples exist to show.
+	goIrohModule = "github.com/tmc/go-iroh"
 )
 
 func load(t *testing.T) *Catalog {
@@ -144,3 +150,73 @@ func TestNetworkTable(t *testing.T) {
 		}
 	}
 }
+
+// TestPackagesHaveExamples keeps every package go-iroh exports either reachable
+// from an example or named in the README's "What is not here". The
+// repository's claim is that it covers go-iroh, and a new package arriving in a
+// dependency bump is the way that claim quietly stops being true: nothing else
+// in the suite notices a package nobody imports.
+//
+// Declining is a real answer, so the README is the escape hatch rather than a
+// list in this file: a package mentioned in backticks under "What is not here"
+// passes, and the reason sits where a reader looking for the missing example
+// will find it.
+//
+// Only whole packages are checked, not every exported name. Most of what a
+// package exports is reached by using it, and an example that demonstrated
+// every option would be a worse example.
+func TestPackagesHaveExamples(t *testing.T) {
+	out, err := exec.Command("go", "list", goIrohModule+"/...").Output()
+	if err != nil {
+		t.Skipf("go list %s/...: %v", goIrohModule, err)
+	}
+	imported := map[string]bool{}
+	for _, e := range load(t).Examples {
+		for _, path := range e.Imports {
+			imported[path] = true
+		}
+	}
+	excused, err := notHere(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pkg := range strings.Fields(string(out)) {
+		// Internal packages are not API, and go-iroh's own commands are
+		// programs rather than something to build on.
+		if strings.Contains(pkg, "/internal/") || strings.Contains(pkg, "/cmd/") {
+			continue
+		}
+		if imported[pkg] || excused[path.Base(pkg)] {
+			continue
+		}
+		t.Errorf("no example imports %s; either write one or say why not in the README's %q section", pkg, notHereHeading)
+	}
+}
+
+const notHereHeading = "## What is not here"
+
+// notHere returns the names the README's "What is not here" section mentions in
+// backticks, which is how the repository declines to write an example for
+// something rather than leaving it unexplained.
+func notHere(readme string) (map[string]bool, error) {
+	data, err := os.ReadFile(readme)
+	if err != nil {
+		return nil, err
+	}
+	text := string(data)
+	i := strings.Index(text, notHereHeading)
+	if i < 0 {
+		return nil, fmt.Errorf("%s has no %q section", readme, notHereHeading)
+	}
+	section := text[i+len(notHereHeading):]
+	if j := strings.Index(section, "\n## "); j >= 0 {
+		section = section[:j]
+	}
+	out := map[string]bool{}
+	for _, m := range codeRE.FindAllStringSubmatch(section, -1) {
+		out[m[1]] = true
+	}
+	return out, nil
+}
+
+var codeRE = regexp.MustCompile("`([^`]+)`")
