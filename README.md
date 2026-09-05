@@ -82,6 +82,7 @@ reason to expect a third.
 | `go-iroh-framed-messages` | length-prefixed messages on one bidirectional stream |
 | `go-iroh-stream-netconn` | streams as `net.Conn`, with deadlines |
 | `go-iroh-stream-listener` | `Endpoint.ListenStreams` and `iroh.NewStreamListener` under `net/http` |
+| `go-iroh-quic-surface` | `quicconn`: iroh streams and datagrams as the surface an HTTP/3 stack expects |
 | `go-iroh-transport-tuning` | keepalive and idle timeout with `QUICTransportConfig` |
 | `go-iroh-graceful-shutdown` | draining router handlers on SIGINT before closing |
 
