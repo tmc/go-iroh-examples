@@ -22,7 +22,9 @@
 // classical peer still connects to it. The fourth dial, classical to PQ-only,
 // has no group in common and fails in the handshake. That failure arrives as an
 // error from [iroh.Endpoint.Connect], not as a dropped connection later, so a
-// caller sees it at the dial site and can report it.
+// caller sees it at the dial site and can report it. It matches
+// [iroh.ErrTLSHandshakeFailure], which is how a program tells a policy mismatch
+// from every other reason a dial can fail without reading error text.
 //
 // Choose KeyExchangePQOnly for a closed deployment where every peer is known to
 // speak MLKEM and downgrade must be impossible; the cost is that an older peer
@@ -40,12 +42,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net/netip"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 	"github.com/tmc/go-iroh/postcard"
@@ -80,14 +83,14 @@ func run() error {
 
 	// One server on the package default, one that requires post-quantum key
 	// exchange. Nothing else differs between them.
-	flexible, err := exampleutil.Bind(ctx, iroh.WithALPNs(alpn))
+	flexible, err := bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
 	}
 	defer flexible.Shutdown(ctx)
 	go serve(ctx, flexible)
 
-	strict, err := exampleutil.Bind(ctx,
+	strict, err := bind(ctx,
 		iroh.WithALPNs(alpn),
 		iroh.WithKeyExchangePolicy(iroh.KeyExchangePQOnly),
 	)
@@ -108,12 +111,16 @@ func run() error {
 		{"pq-only server, classical client", strict, iroh.KeyExchangeClassical},
 	}
 	for _, c := range cases {
-		dialed, accepted, err := probe(ctx, exampleutil.Addr(c.server), c.policy)
-		if err != nil {
-			// A policy mismatch is a handshake failure: TLS alert 40,
-			// handshake_failure, carried as QUIC CRYPTO_ERROR 0x128.
-			fmt.Printf("%s: refused: %s\n", c.name, reason(err))
+		dialed, accepted, err := probe(ctx, c.server.Addr(), c.policy)
+		if errors.Is(err, iroh.ErrTLSHandshakeFailure) {
+			// The two policies share no group, so the peer sent TLS alert 40,
+			// handshake_failure. Every other dial error is a real failure and
+			// ends the run.
+			fmt.Printf("%s: refused: no key exchange group in common\n", c.name)
 			continue
+		}
+		if err != nil {
+			return fmt.Errorf("%s: %w", c.name, err)
 		}
 		fmt.Printf("%s: %s, both ends agree: %v\n", c.name, dialed, dialed == accepted)
 	}
@@ -124,7 +131,7 @@ func run() error {
 // returns the key-exchange group as seen by the dialing side and as reported by
 // the accepting side.
 func probe(ctx context.Context, addr netaddr.EndpointAddr, policy iroh.KeyExchangePolicy) (dialed, accepted string, err error) {
-	client, err := exampleutil.Bind(ctx, iroh.WithKeyExchangePolicy(policy))
+	client, err := bind(ctx, iroh.WithKeyExchangePolicy(policy))
 	if err != nil {
 		return "", "", err
 	}
@@ -141,7 +148,7 @@ func probe(ctx context.Context, addr netaddr.EndpointAddr, policy iroh.KeyExchan
 		return "", "", err
 	}
 	// The exchange is bytes, not text; postcard output is binary.
-	reply, err := exampleutil.Exchange(ctx, conn, string(req))
+	reply, err := exchange(ctx, conn, string(req))
 	if err != nil {
 		return "", "", err
 	}
@@ -163,7 +170,7 @@ func serve(ctx context.Context, ep *iroh.Endpoint) {
 			return
 		}
 		go func() {
-			_ = exampleutil.Transform(ctx, conn, func(req string) string {
+			_ = transform(ctx, conn, func(req string) string {
 				return string(answer([]byte(req), conn.KeyExchangeGroup()))
 			})
 		}()
@@ -185,12 +192,50 @@ func answer(req []byte, group string) []byte {
 	return b
 }
 
-// reason trims the endpoint ID out of a dial error so that the output does not
-// change from run to run.
-func reason(err error) string {
-	s := err.Error()
-	if i := strings.Index(s, "CRYPTO_ERROR"); i >= 0 {
-		return s[i:]
+// bind binds an endpoint to an ephemeral IPv6 loopback port, which keeps the
+// example self-contained: no relay, no DNS, no network access. Options given by
+// the caller are applied after the bind address, so they may override it.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
 	}
-	return s
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// transform accepts one bidirectional stream, reads it to EOF, and writes back
+// f applied to what it read. It is the server half of exchange.
+func transform(ctx context.Context, conn *iroh.Conn, f func(string) string) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write([]byte(f(string(b)))); err != nil {
+		return err
+	}
+	return s.Close()
 }

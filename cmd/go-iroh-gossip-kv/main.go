@@ -33,11 +33,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"os"
 	"sort"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/gossip"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
@@ -75,7 +75,7 @@ func run() error {
 	}
 	defer aTopic.Close()
 
-	bTopic, err := b.gossip.SubscribeAndJoin(ctx, topicID, []netaddr.EndpointAddr{exampleutil.Addr(a.endpoint)})
+	bTopic, err := b.gossip.SubscribeAndJoin(ctx, topicID, []netaddr.EndpointAddr{a.endpoint.Addr()})
 	if err != nil {
 		return fmt.Errorf("subscribe and join: %w", err)
 	}
@@ -120,7 +120,7 @@ type node struct {
 }
 
 func newNode(ctx context.Context) (*node, error) {
-	ep, err := exampleutil.Bind(ctx)
+	ep, err := bind(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("bind endpoint: %w", err)
 	}
@@ -266,4 +266,13 @@ func (s kvStore) print() {
 		v := s[key]
 		fmt.Printf("%s=%s seq=%d signer=%s\n", key, v.Value, v.Seq, v.Author)
 	}
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback keeps the example self-contained: no relay, no DNS, no network.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }

@@ -18,6 +18,13 @@
 // reading through bufio under a five-second deadline. Nothing here is iroh's
 // own API except the two calls that produce the connections.
 //
+// Half-close comes with the wrapper. [net.Conn] does not declare CloseWrite, so
+// the standard library type-asserts for it — that is how net/http and
+// httputil.ReverseProxy tell a TCP connection they are done sending without
+// tearing the connection down. The connection here answers that assertion, so
+// the client ends its write side and the server reads an ordinary EOF while
+// the connection stays open.
+//
 // Compare go-iroh-stream-listener, which wraps the accept side as a [net.Listener]
 // so an existing server loop — net/http included — serves iroh peers
 // unchanged.
@@ -28,16 +35,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
-const alpn = "go-iroh-examples/stream-netconn-deadline/1"
+const alpn = "go-iroh-examples/stream-netconn/1"
 
 // deadline bounds each side's read and write. It is generous: the point is that
 // the deadline exists and is enforced by the net.Conn, not how long it is.
@@ -54,7 +61,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(alpn))
+	server, err := bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
 	}
@@ -72,13 +79,13 @@ func run() error {
 		serverErr <- serve(ctx, server, release)
 	}()
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
+	conn, err := client.Connect(ctx, server.Addr(), alpn)
 	if err != nil {
 		return err
 	}
@@ -101,6 +108,18 @@ func run() error {
 		return fmt.Errorf("read reply: %w", err)
 	}
 	fmt.Print(reply)
+
+	// A net.Conn over iroh half-closes, the same probe net/http and
+	// httputil.ReverseProxy make on a *net.TCPConn. Close would end both
+	// directions; CloseWrite ends only the send side, which the peer sees as a
+	// plain EOF.
+	cw, ok := stream.(interface{ CloseWrite() error })
+	fmt.Println("half-close supported:", ok)
+	if ok {
+		if err := cw.CloseWrite(); err != nil {
+			return fmt.Errorf("close write: %w", err)
+		}
+	}
 
 	releaseServer()
 	if err := <-serverErr; err != nil {
@@ -135,5 +154,24 @@ func serve(ctx context.Context, ep *iroh.Endpoint, release <-chan struct{}) erro
 	if _, err := io.WriteString(stream, strings.ToUpper(line)); err != nil {
 		return fmt.Errorf("write reply: %w", err)
 	}
+
+	// The client's half-close arrives here as an EOF on a connection that is
+	// otherwise still open, which is what lets a protocol say "that is all I
+	// am sending" without saying "I am gone".
+	rest, err := io.ReadAll(stream)
+	if err != nil {
+		return fmt.Errorf("read after reply: %w", err)
+	}
+	fmt.Println("peer half-closed after", len(rest), "more bytes")
 	return nil
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback binding keeps the example self-contained: no relay, no DNS, no
+// network access.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }

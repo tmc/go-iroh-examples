@@ -18,14 +18,12 @@
 // sit alongside pkarr, which covers the peers mDNS cannot see.
 //
 // This example runs both halves: one endpoint announces itself, a second one
-// resolves it by ID and dials the address that comes back. Two details of
-// go-iroh v0.1.0 shape the code. Announcements carry the addresses passed to
-// [mdns.Discovery.Publish], so the announcer republishes on a ticker rather
-// than once — [mdns.Discovery] does not answer the query
-// [mdns.Discovery.Resolve] sends, and a peer is discovered when its next
-// announcement arrives. And the service name is per-run rather than the
-// default "irohv1", so that the example neither hears nor disturbs real iroh
-// peers sharing the link.
+// resolves it by ID and dials the address that comes back. The announcer
+// publishes once. A responder answers the PTR query [mdns.Discovery.Resolve]
+// sends with its last announcement, so a peer stays findable between
+// announcements rather than only while it happens to be repeating itself. The
+// service name is per-run rather than the default "irohv1", so that the example
+// neither hears nor disturbs real iroh peers sharing the link.
 //
 // mDNS is the one discovery mechanism that depends on the host's networking:
 // it needs an interface that is up and multicast-capable, and it needs UDP port
@@ -38,10 +36,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net/netip"
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/dns"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/iroh/mdns"
@@ -55,9 +54,14 @@ const (
 	// can be dropped, and on a host that cannot multicast none ever arrives.
 	discoverWait = 15 * time.Second
 
-	// announceInterval is how often the announcer repeats itself while the
-	// seeker is listening.
-	announceInterval = 250 * time.Millisecond
+	// startupGrace is how long to wait for a listener to fail to bind before
+	// taking its silence for success.
+	startupGrace = 250 * time.Millisecond
+
+	// announcementGap is how long the example lets the one announcement pass
+	// before anyone is listening for it, so that the lookup below can only
+	// succeed through a query and its answer.
+	announcementGap = time.Second
 
 	// needsMulticast explains every way this example gives up.
 	needsMulticast = "mDNS needs a multicast-capable interface"
@@ -98,13 +102,13 @@ func run() error {
 	var announceLookups iroh.AddressLookupServices
 	announceLookups.AddPublisher(announcer)
 
-	// exampleutil.Bind binds IPv6 loopback, so the announced address is
+	// bind binds IPv6 loopback, so the announced address is
 	// reachable from this machine and nowhere else. That is deliberate: the two
 	// endpoints here share a host, and loopback keeps the dial off the network.
 	// A program that wants to be dialed by another machine binds the
 	// unspecified address instead, so that its LAN addresses are the ones the
 	// announcement carries.
-	server, err := exampleutil.Bind(ctx,
+	server, err := bind(ctx,
 		iroh.WithSecretKey(announcerKey),
 		iroh.WithALPNs(alpn),
 		iroh.WithAddressLookup(&announceLookups),
@@ -129,7 +133,7 @@ func run() error {
 	var seekLookups iroh.AddressLookupServices
 	seekLookups.AddResolver(seeker)
 
-	client, err := exampleutil.Bind(ctx,
+	client, err := bind(ctx,
 		iroh.WithSecretKey(clientKey),
 		iroh.WithAddressLookup(&seekLookups),
 	)
@@ -139,20 +143,15 @@ func run() error {
 	defer client.Shutdown(ctx)
 
 	// Start owns the multicast socket: it binds UDP 5353, joins the group on
-	// every interface that is up, and reads until ctx ends. Resolve only sees
-	// remote announcements while it is running.
+	// every interface that is up, and reads until ctx ends. A Discovery
+	// announces, answers, and hears only while it is running.
 	listen := make(chan error, 2)
 	go func() { listen <- announcer.Start(ctx) }()
-	go func() { listen <- seeker.Start(ctx) }()
-	select {
-	case err := <-listen:
-		if err != nil {
-			// A host with no multicast interface, or one where 5353 cannot be
-			// shared, fails here rather than silently hearing nothing.
-			fmt.Printf("mDNS listener stopped (%v); %s\n", err, needsMulticast)
-			return nil
-		}
-	case <-time.After(announceInterval):
+	if stopped, err := waitListening(listen); stopped {
+		// A host with no multicast interface, or one where 5353 cannot be
+		// shared, fails here rather than silently hearing nothing.
+		fmt.Printf("mDNS listener stopped (%v); %s\n", err, needsMulticast)
+		return nil
 	}
 
 	accepted := make(chan error, 1)
@@ -162,19 +161,30 @@ func run() error {
 			accepted <- err
 			return
 		}
-		accepted <- exampleutil.Echo(ctx, conn)
+		accepted <- echo(ctx, conn)
 	}()
 
 	// What gets announced: the endpoint's own addresses, minus the relay URLs
 	// this loopback endpoint does not have.
-	data := dns.EndpointDataFromAddr(exampleutil.Addr(server))
+	data := dns.EndpointDataFromAddr(server.Addr())
 	fmt.Println("announcing:", len(data.IPAddrs()), "address(es)")
-	go announce(ctx, announcer, data)
+	announcer.Publish(data)
+
+	// The seeker starts listening only after that announcement has come and
+	// gone, so it has nothing cached and no announcement is coming. It finds the
+	// peer anyway: Resolve multicasts a PTR query for the service, and the
+	// announcer answers it with the announcement it last built. Being
+	// discoverable does not mean repeating yourself until somebody hears.
+	time.Sleep(announcementGap)
+	go func() { listen <- seeker.Start(ctx) }()
+	if stopped, err := waitListening(listen); stopped {
+		fmt.Printf("mDNS listener stopped (%v); %s\n", err, needsMulticast)
+		return nil
+	}
 
 	// The seeker knows the ID and nothing else, the way a peer that was handed
-	// an ID out of band does. Note that the address has to be resolved before
-	// the dial: Connect only tries the addresses in the EndpointAddr it is
-	// given.
+	// an ID out of band does. Resolving explicitly rather than dialing the bare
+	// ID is what shows where the answer came from.
 	item, ok, err := discover(ctx, seeker, server.ID())
 	if err != nil {
 		return err
@@ -194,7 +204,7 @@ func run() error {
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exampleutil.Exchange(ctx, conn, "mdns hello")
+	reply, err := exchange(ctx, conn, "mdns hello")
 	if err != nil {
 		return err
 	}
@@ -202,8 +212,19 @@ func run() error {
 		return err
 	}
 	fmt.Println("reply:", reply)
-	fmt.Println("path:", exampleutil.SelectedPathKind(conn.Paths()))
+	fmt.Println("path:", selectedPathKind(conn.Paths()))
 	return nil
+}
+
+// waitListening reports whether a listener failed to start. Start blocks until
+// ctx ends, so silence for startupGrace is as much confirmation as there is.
+func waitListening(listen <-chan error) (stopped bool, err error) {
+	select {
+	case err := <-listen:
+		return true, err
+	case <-time.After(startupGrace):
+		return false, nil
+	}
 }
 
 // uniqueService returns a DNS-SD service name that only this process uses.
@@ -213,22 +234,6 @@ func uniqueService() (string, error) {
 		return "", err
 	}
 	return "go-iroh-examples-" + hex.EncodeToString(b[:]), nil
-}
-
-// announce republishes data until ctx ends. A single announcement is enough
-// only if a listener happens to be resolving when it arrives; repeating is what
-// an mDNS responder does, and it is what makes the lookup below reliable.
-func announce(ctx context.Context, d *mdns.Discovery, data dns.EndpointData) {
-	ticker := time.NewTicker(announceInterval)
-	defer ticker.Stop()
-	for {
-		d.Publish(data)
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
 }
 
 // discover returns the first item d resolves for id. It reports false if the
@@ -242,4 +247,71 @@ func discover(ctx context.Context, d *mdns.Discovery, id key.EndpointID) (iroh.I
 		return item, true, nil
 	}
 	return iroh.Item{}, false, nil
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, which keeps the
+// example self-contained: it needs no relay, no DNS, and no network access.
+// Additional options are applied after the bind address, so a caller may
+// override it.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// echo accepts one bidirectional stream, reads it to EOF, and writes back what
+// it read. It is the server half of exchange.
+func echo(ctx context.Context, conn *iroh.Conn) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write(b); err != nil {
+		return err
+	}
+	return s.Close()
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// selectedPathKind names the transport of the selected path: "relay", the
+// network of a direct address, "unknown", or "none" if no path is selected.
+func selectedPathKind(paths []iroh.PathInfo) string {
+	for _, p := range paths {
+		if !p.Selected {
+			continue
+		}
+		if p.Relayed {
+			return "relay"
+		}
+		if p.HasAddr {
+			return p.Addr.Network()
+		}
+		return "unknown"
+	}
+	return "none"
 }

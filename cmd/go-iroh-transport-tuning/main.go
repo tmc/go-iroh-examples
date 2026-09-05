@@ -31,10 +31,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -61,7 +61,7 @@ func run() error {
 		KeepAlivePeriod: 250 * time.Millisecond,
 		MaxIdleTimeout:  3 * time.Second,
 	}
-	server, err := exampleutil.Bind(ctx,
+	server, err := bind(ctx,
 		iroh.WithALPNs(alpn),
 		iroh.WithTransportConfig(tuning),
 	)
@@ -75,13 +75,13 @@ func run() error {
 		serverErr <- reflectDatagrams(ctx, server, 2)
 	}()
 
-	client, err := exampleutil.Bind(ctx, iroh.WithTransportConfig(tuning))
+	client, err := bind(ctx, iroh.WithTransportConfig(tuning))
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
+	conn, err := client.Connect(ctx, server.Addr(), alpn)
 	if err != nil {
 		return err
 	}
@@ -139,4 +139,14 @@ func datagramExchange(ctx context.Context, conn *iroh.Conn, msg string) (string,
 		return "", err
 	}
 	return string(p), nil
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback binding keeps the example self-contained: no relay, no DNS, no
+// network access.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }

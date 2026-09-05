@@ -26,10 +26,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/blobs"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
@@ -56,7 +56,7 @@ func run() error {
 	hash := blobs.NewHash(payload)
 	size := uint64(len(payload))
 
-	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(blobs.ALPN))
+	server, err := bind(ctx, iroh.WithALPNs(blobs.ALPN))
 	if err != nil {
 		return err
 	}
@@ -65,13 +65,13 @@ func run() error {
 	serverErr := make(chan error, 1)
 	go serveBlobs(ctx, server, store, serverErr)
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	addr := exampleutil.Addr(server)
+	addr := server.Addr()
 	prefix, err := getRange(ctx, client, addr, hash, blobs.RangeChunks(0, 2), size)
 	if err != nil {
 		return preferServerErr(serverErr, err)
@@ -150,4 +150,13 @@ func preferServerErr(serverErr <-chan error, err error) error {
 // chunkCount is the number of BLAKE3 chunks a blob of size bytes occupies.
 func chunkCount(size uint64) uint64 {
 	return (size + blobs.ChunkSize - 1) / blobs.ChunkSize
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback keeps the example self-contained: no relay, no DNS, no network.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }

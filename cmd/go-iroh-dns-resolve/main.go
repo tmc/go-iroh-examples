@@ -1,7 +1,7 @@
 // Command go-iroh-dns-resolve turns an endpoint id into an address using DNS.
 //
 // An endpoint ID is a public key. It says who a peer is and nothing about where
-// it is, which is why go-iroh-connect-public has to be handed a UDP address or a
+// it is, which is why go-iroh-public-endpoint has to be handed a UDP address or a
 // relay URL alongside it. Endpoint discovery closes that gap with DNS: an
 // endpoint publishes its current relay URL and direct addresses as TXT records
 // under "_iroh.<z32-endpoint-id>.<origin>", and anyone holding the ID can look
@@ -28,7 +28,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/dns"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
@@ -47,9 +46,9 @@ func main() {
 }
 
 func run(args []string) error {
-	fs := flag.NewFlagSet("33-dns-resolve", flag.ContinueOnError)
-	rawID := fs.String("endpoint-id", exampleutil.Env("IROH_EXAMPLE_ENDPOINT_ID", ""), "published endpoint id to resolve, z32 or hex ($IROH_EXAMPLE_ENDPOINT_ID)")
-	origin := fs.String("dns-origin", exampleutil.Env("IROH_EXAMPLE_DNS_ORIGIN", dns.N0DNSEndpointOriginProd), "discovery origin to query ($IROH_EXAMPLE_DNS_ORIGIN)")
+	fs := flag.NewFlagSet("go-iroh-dns-resolve", flag.ContinueOnError)
+	rawID := fs.String("endpoint-id", env("IROH_EXAMPLE_ENDPOINT_ID", ""), "published endpoint id to resolve, z32 or hex ($IROH_EXAMPLE_ENDPOINT_ID)")
+	origin := fs.String("dns-origin", env("IROH_EXAMPLE_DNS_ORIGIN", dns.N0DNSEndpointOriginProd), "discovery origin to query ($IROH_EXAMPLE_DNS_ORIGIN)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -82,13 +81,30 @@ func run(args []string) error {
 	return nil
 }
 
-// parseEndpointID accepts either printed form of an endpoint id. As of go-iroh
-// v0.1.0 key.ParseEndpointID takes the hex form of key.EndpointID.String, not
-// the z-base-32 form of key.EndpointID.Z32 that the other examples print, so
-// the z32 form is tried separately.
+// parseEndpointID accepts either printed form of an endpoint id.
+// key.ParseEndpointID reads the hex form of key.EndpointID.String and the RFC
+// 4648 base32 form upstream iroh prints; key.ParseEndpointIDZ32 reads the
+// z-base-32 form of key.EndpointID.Z32 that these examples print.
+//
+// The two base32 flavours are both 52 characters and differ only in their
+// alphabets, so neither can be recognized: roughly one z-base-32 id in five
+// hundred is also valid RFC 4648 base32 and decodes to a different, equally
+// well-formed id. The order below is therefore a choice and not a detection —
+// z-base-32 first, because that is the form this repository prints. A program
+// with one source of ids should call the one function that matches it.
 func parseEndpointID(s string) (key.EndpointID, error) {
-	if id, err := key.ParseEndpointID(s); err == nil {
+	if id, err := key.ParseEndpointIDZ32(s); err == nil {
 		return id, nil
 	}
-	return key.ParseEndpointIDZ32(s)
+	return key.ParseEndpointID(s)
+}
+
+// env returns the value of the environment variable name, or def if it is
+// unset or empty, so that a flag and an IROH_EXAMPLE_ variable configure the
+// same thing.
+func env(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
 }

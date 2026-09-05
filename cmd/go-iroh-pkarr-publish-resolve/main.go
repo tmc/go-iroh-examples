@@ -32,9 +32,9 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"strconv"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/dns"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
@@ -58,8 +58,8 @@ func main() {
 }
 
 func run(args []string) error {
-	fs := flag.NewFlagSet("34-pkarr-publish-resolve", flag.ContinueOnError)
-	live := fs.Bool("live", exampleutil.EnvBool("GO_IROH_LIVE_PKARR", false), "publish to and resolve from n0's public pkarr relay ($GO_IROH_LIVE_PKARR)")
+	fs := flag.NewFlagSet("go-iroh-pkarr-publish-resolve", flag.ContinueOnError)
+	live := fs.Bool("live", envBool("GO_IROH_LIVE_PKARR", false), "publish to and resolve from n0's public pkarr relay ($GO_IROH_LIVE_PKARR)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -111,4 +111,15 @@ func run(args []string) error {
 		return fmt.Errorf("resolve published endpoint: %w", lastErr)
 	}
 	return errors.New("pkarr resolve timed out")
+}
+
+// envBool returns the boolean value of the environment variable name, or def
+// if it is unset or unparseable, so that a flag and a GO_IROH_ variable
+// configure the same thing.
+func envBool(name string, def bool) bool {
+	v, err := strconv.ParseBool(os.Getenv(name))
+	if err != nil {
+		return def
+	}
+	return v
 }

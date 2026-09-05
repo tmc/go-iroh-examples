@@ -17,7 +17,7 @@
 // The relays are a real service on the internet, so this example does nothing
 // until -live is passed. go-iroh-local-infra runs the same shape against an
 // in-process relay server and needs no network; go-iroh-net-report shows
-// what the probing measured; go-iroh-public-server folds this opt-in into a server.
+// what the probing measured; go-iroh-public-endpoint folds this opt-in into a server.
 package main
 
 import (
@@ -26,9 +26,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/relay"
 )
@@ -46,8 +46,8 @@ func main() {
 }
 
 func run(args []string) error {
-	fs := flag.NewFlagSet("35-relay-online", flag.ContinueOnError)
-	live := fs.Bool("live", exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false), "connect to n0's default public relays ($GO_IROH_LIVE_RELAY)")
+	fs := flag.NewFlagSet("go-iroh-relay-online", flag.ContinueOnError)
+	live := fs.Bool("live", envBool("GO_IROH_LIVE_RELAY", false), "connect to n0's default public relays ($GO_IROH_LIVE_RELAY)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -77,4 +77,15 @@ func run(args []string) error {
 	fmt.Println("connected:", status.IsConnected())
 	fmt.Println("advertised relays:", ep.Addr().RelayURLs())
 	return nil
+}
+
+// envBool returns the boolean value of the environment variable name, or def
+// if it is unset or unparseable, so that a flag and a GO_IROH_ variable
+// configure the same thing.
+func envBool(name string, def bool) bool {
+	v, err := strconv.ParseBool(os.Getenv(name))
+	if err != nil {
+		return def
+	}
+	return v
 }

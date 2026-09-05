@@ -22,9 +22,9 @@ import (
 	"net/netip"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 	"github.com/tmc/go-iroh/relay"
@@ -46,9 +46,9 @@ func main() {
 }
 
 func run(args []string) error {
-	fs := flag.NewFlagSet("52-doctor", flag.ContinueOnError)
-	live := fs.Bool("live", exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false),
-		"diagnose against n0's public relays instead of an in-process one")
+	fs := flag.NewFlagSet("go-iroh-doctor", flag.ContinueOnError)
+	live := fs.Bool("live", envBool("GO_IROH_LIVE_RELAY", false),
+		"diagnose against n0's public relays instead of an in-process one ($GO_IROH_LIVE_RELAY)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func run(args []string) error {
 		}
 	}
 
-	report, ok := exampleutil.WaitReport(ctx, server)
+	report, ok := waitReport(ctx, server)
 	fmt.Println("net report available:", ok)
 	if ok {
 		fmt.Println("udp available:", report.HasUDP())
@@ -126,7 +126,7 @@ func run(args []string) error {
 	if err := <-accepted; err != nil {
 		return err
 	}
-	fmt.Println("connection selected:", exampleutil.SelectedPathKind(conn.Paths()))
+	fmt.Println("connection selected:", selectedPathKind(conn.Paths()))
 	return nil
 }
 
@@ -160,4 +160,50 @@ func printRelayLatencies(latencies map[netaddr.RelayURL]time.Duration) {
 	for _, url := range urls {
 		fmt.Printf("latency %s: %s\n", url, latencies[url].Round(time.Millisecond))
 	}
+}
+
+// envBool returns the environment variable name parsed as a boolean, or def if
+// it is unset or unparseable, so that a flag and an environment variable
+// configure the same thing.
+func envBool(name string, def bool) bool {
+	v, err := strconv.ParseBool(os.Getenv(name))
+	if err != nil {
+		return def
+	}
+	return v
+}
+
+// waitReport polls ep for its first net report. It returns false if ctx ends
+// before one is available.
+func waitReport(ctx context.Context, ep *iroh.Endpoint) (iroh.NetReport, bool) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if report, ok := ep.NetReport(); ok {
+			return report, true
+		}
+		select {
+		case <-ctx.Done():
+			return iroh.NetReport{}, false
+		case <-ticker.C:
+		}
+	}
+}
+
+// selectedPathKind names the transport of the selected path: "relay", the
+// network of a direct address, "unknown", or "none" if no path is selected.
+func selectedPathKind(paths []iroh.PathInfo) string {
+	for _, p := range paths {
+		if !p.Selected {
+			continue
+		}
+		if p.Relayed {
+			return "relay"
+		}
+		if p.HasAddr {
+			return p.Addr.Network()
+		}
+		return "unknown"
+	}
+	return "none"
 }

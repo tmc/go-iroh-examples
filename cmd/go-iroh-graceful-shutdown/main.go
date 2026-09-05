@@ -17,13 +17,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -40,7 +40,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	server, err := exampleutil.Bind(ctx)
+	server, err := bind(ctx)
 	if err != nil {
 		return err
 	}
@@ -53,13 +53,13 @@ func run() error {
 		return err
 	}
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(context.Background())
 
-	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
+	conn, err := client.Connect(ctx, server.Addr(), alpn)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func run() error {
 	if _, err := io.WriteString(stream, "drain this request"); err != nil {
 		return err
 	}
-	if err := stream.Close(); err != nil {
+	if err := stream.CloseWrite(); err != nil {
 		return err
 	}
 
@@ -150,4 +150,14 @@ func (h *gracefulHandler) WaitStarted(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback binding keeps the example self-contained: no relay, no DNS, no
+// network access.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }

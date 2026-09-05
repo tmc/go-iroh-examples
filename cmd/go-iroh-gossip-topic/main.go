@@ -25,12 +25,12 @@
 // [gossip.Topic.Neighbors] is the same membership as a snapshot, for code that
 // wants to ask rather than watch.
 //
-// Note that [gossip.Topic.Joined] and [gossip.Topic.Events] read the same
-// subscription queue in v0.1.0: a running Events iterator consumes the
-// NeighborUp that Joined is waiting for, so Joined — and therefore
-// [gossip.Gossip.SubscribeAndJoin] — never returns. A program that watches
-// events should wait for membership on the event stream, as this one does,
-// or poll [gossip.Topic.IsJoined].
+// A program that only needs to know that it is connected to somebody can wait
+// on [gossip.Topic.Joined], or subscribe and wait in one call with
+// [gossip.Gossip.SubscribeAndJoin]; both read the neighbor set, so they run
+// alongside an Events iterator. This example wants more than that — it waits
+// for four particular links so the broadcast cannot race the overlay into
+// existence — and a specific neighbor is only visible as a NeighborUp event.
 //
 // The topic runs over the iroh-gossip ALPN, so each endpoint serves
 // [gossip.Gossip.Handler] from a router and interoperates with Rust iroh-gossip
@@ -42,13 +42,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"net/netip"
 	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/gossip"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
@@ -97,10 +97,10 @@ func run() error {
 
 	// The chain. Each JoinPeers dials one bootstrap peer; the overlay is what
 	// the nodes build out of those two links.
-	if err := b.topic.JoinPeers(ctx, []netaddr.EndpointAddr{exampleutil.Addr(a.ep)}); err != nil {
+	if err := b.topic.JoinPeers(ctx, []netaddr.EndpointAddr{a.ep.Addr()}); err != nil {
 		return fmt.Errorf("seed B with A: %w", err)
 	}
-	if err := c.topic.JoinPeers(ctx, []netaddr.EndpointAddr{exampleutil.Addr(b.ep)}); err != nil {
+	if err := c.topic.JoinPeers(ctx, []netaddr.EndpointAddr{b.ep.Addr()}); err != nil {
 		return fmt.Errorf("seed C with B: %w", err)
 	}
 
@@ -171,7 +171,7 @@ type node struct {
 // newNode binds a loopback endpoint and serves gossip on it. Gossip is an
 // ordinary iroh protocol: it is reachable because the router answers its ALPN.
 func newNode(ctx context.Context, name string, names map[key.EndpointID]string) (*node, error) {
-	ep, err := exampleutil.Bind(ctx)
+	ep, err := bind(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -300,4 +300,13 @@ func scope(s gossip.DeliveryScope) string {
 		return "swarm"
 	}
 	return "neighbor"
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback keeps the example self-contained: no relay, no DNS, no network.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }

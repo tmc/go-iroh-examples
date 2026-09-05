@@ -8,11 +8,10 @@
 // application fills in from whatever out-of-band channel it already has, such
 // as a ticket it was pasted.
 //
-// [iroh.WithAddressLookup] registers the lookup with both endpoints. In go-iroh
-// v0.1.0 the registration feeds the per-remote address state machine but does
-// not seed the first dial, so this example resolves the ID itself and passes
-// the resulting [netaddr.EndpointAddr] to [iroh.Endpoint.Connect]; the same
-// note applies in go-iroh-local-infra.
+// [iroh.WithAddressLookup] registers the lookup with both endpoints, which is
+// all it takes: [iroh.Endpoint.Connect] given an address that carries an ID and
+// nothing else asks the lookup services for a path and dials the first answer
+// that has one. The client here is never told where the server is.
 //
 // [iroh.AddressResolver] is one interface with several implementations, and
 // only this one is a map: go-iroh-dns-resolve and go-iroh-pkarr-publish-resolve resolve
@@ -23,10 +22,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/netip"
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 )
@@ -48,21 +48,21 @@ func run() error {
 	var lookups iroh.AddressLookupServices
 	lookups.AddResolver(lookup)
 
-	server, err := exampleutil.Bind(ctx, iroh.WithAddressLookup(&lookups))
+	server, err := bind(ctx, iroh.WithAddressLookup(&lookups))
 	if err != nil {
 		return err
 	}
 	lookup.AddEndpointAddr(server.Addr())
 
 	router, err := iroh.NewRouter(server, map[string]iroh.ProtocolHandler{
-		alpn: exampleutil.Handler{},
+		alpn: handler{},
 	}, nil)
 	if err != nil {
 		return err
 	}
 	defer router.Shutdown(ctx)
 
-	client, err := exampleutil.Bind(ctx, iroh.WithAddressLookup(&lookups))
+	client, err := bind(ctx, iroh.WithAddressLookup(&lookups))
 	if err != nil {
 		return err
 	}
@@ -71,16 +71,12 @@ func run() error {
 	// Register the client too. A lookup service is symmetric: the server
 	// resolves the dialing endpoint's ID while it accepts, so an entry that
 	// only ever names the server leaves the reverse lookup with nothing to
-	// return. In go-iroh v0.1.0 that miss crashes the endpoint
-	// (iroh/addresslookup.go:303 ranges over the nil sequence
-	// MemoryLookup.Resolve returns for an unknown ID).
+	// return.
 	lookup.AddEndpointAddr(client.Addr())
 
-	addr, err := resolve(ctx, lookup, server)
-	if err != nil {
-		return err
-	}
-	fmt.Println("resolved addresses:", len(addr.Addrs()))
+	// Everything the client knows about the server. Connect finds the rest.
+	addr := netaddr.NewEndpointAddr(server.ID())
+	fmt.Println("addresses given to Connect:", len(addr.Addrs()))
 
 	conn, err := client.Connect(ctx, addr, alpn)
 	if err != nil {
@@ -88,7 +84,7 @@ func run() error {
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exampleutil.Exchange(ctx, conn, "discovered hello")
+	reply, err := exchange(ctx, conn, "discovered hello")
 	if err != nil {
 		return err
 	}
@@ -96,16 +92,53 @@ func run() error {
 	return nil
 }
 
-// resolve returns the first address the lookup reports for the server's ID.
-// Resolve yields a sequence because a real service may answer more than once,
-// from more than one source, and may report an error for one source while
-// another still succeeds.
-func resolve(ctx context.Context, lookup *iroh.MemoryLookup, server *iroh.Endpoint) (netaddr.EndpointAddr, error) {
-	for item, err := range lookup.Resolve(ctx, server.ID()) {
-		if err != nil {
-			return netaddr.EndpointAddr{}, fmt.Errorf("resolve %s: %w", server.ID().Short(), err)
-		}
-		return item.Addr(), nil
+// bind binds an endpoint to an ephemeral IPv6 loopback port, which keeps the
+// example self-contained: it needs no relay, no DNS, and no network access.
+// Additional options are applied after the bind address, so a caller may
+// override it.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// handler echoes one stream per connection.
+type handler struct{}
+
+// Accept implements [iroh.ProtocolHandler].
+func (handler) Accept(ctx context.Context, conn *iroh.Conn) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
 	}
-	return netaddr.EndpointAddr{}, fmt.Errorf("no address for %s", server.ID().Short())
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write(b); err != nil {
+		return err
+	}
+	return s.Close()
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

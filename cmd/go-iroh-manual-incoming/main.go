@@ -27,10 +27,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/netip"
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -53,7 +54,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(alpn))
+	server, err := bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
 	}
@@ -65,19 +66,19 @@ func run() error {
 		served <- acceptOne(ctx, server, seen)
 	}()
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
+	conn, err := client.Connect(ctx, server.Addr(), alpn)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", server.ID().Short(), err)
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exampleutil.Exchange(ctx, conn, "manual hello")
+	reply, err := exchange(ctx, conn, "manual hello")
 	if err != nil {
 		return err
 	}
@@ -110,5 +111,53 @@ func acceptOne(ctx context.Context, server *iroh.Endpoint, seen chan<- inbound) 
 		return fmt.Errorf("await verified connection: %w", err)
 	}
 	seen <- inbound{alpn: negotiated, remote: conn.RemoteID().Short()}
-	return exampleutil.Echo(ctx, conn)
+	return echo(ctx, conn)
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, so that the
+// example is self-contained: no relay, no DNS, no network access. Options given
+// by the caller are applied after the bind address and may override it.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// echo accepts one bidirectional stream, reads it to EOF, and writes back what
+// it read. It is the server half of exchange.
+func echo(ctx context.Context, conn *iroh.Conn) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write(b); err != nil {
+		return err
+	}
+	return s.Close()
 }

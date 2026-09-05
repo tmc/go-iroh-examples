@@ -12,8 +12,7 @@
 // has nothing to measure against: [iroh.WithNetReport] enables the background
 // refreshes but the report never becomes available. That is what the default
 // run prints. With -live the endpoint joins the public relay map, the probes
-// have somewhere to go, and [exampleutil.WaitReport] polls until the first
-// report lands.
+// have somewhere to go, and waitReport polls until the first report lands.
 //
 // go-iroh-doctor prints these fields and more against an in-process relay, so it
 // gives real numbers with no network; go-iroh-relay-online is the relay opt-in on
@@ -28,9 +27,9 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"strconv"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/relay"
 )
@@ -48,8 +47,8 @@ func main() {
 }
 
 func run(args []string) error {
-	fs := flag.NewFlagSet("37-net-report", flag.ContinueOnError)
-	live := fs.Bool("live", exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false), "probe n0's public relay map instead of reporting a direct-only endpoint ($GO_IROH_LIVE_RELAY)")
+	fs := flag.NewFlagSet("go-iroh-net-report", flag.ContinueOnError)
+	live := fs.Bool("live", envBool("GO_IROH_LIVE_RELAY", false), "probe n0's public relay map instead of reporting a direct-only endpoint ($GO_IROH_LIVE_RELAY)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -73,7 +72,7 @@ func run(args []string) error {
 	var ok bool
 	if *live {
 		reportCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		report, ok = exampleutil.WaitReport(reportCtx, ep)
+		report, ok = waitReport(reportCtx, ep)
 		cancel()
 	} else {
 		report, ok = ep.NetReport()
@@ -91,4 +90,32 @@ func run(args []string) error {
 	fmt.Println("global v6:", report.GlobalV6)
 	fmt.Println("preferred relay:", report.PreferredRelay)
 	return nil
+}
+
+// waitReport polls ep for its first net report. It returns false if ctx ends
+// before one is available.
+func waitReport(ctx context.Context, ep *iroh.Endpoint) (iroh.NetReport, bool) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if report, ok := ep.NetReport(); ok {
+			return report, true
+		}
+		select {
+		case <-ctx.Done():
+			return iroh.NetReport{}, false
+		case <-ticker.C:
+		}
+	}
+}
+
+// envBool returns the boolean value of the environment variable name, or def
+// if it is unset or unparseable, so that a flag and a GO_IROH_ variable
+// configure the same thing.
+func envBool(name string, def bool) bool {
+	v, err := strconv.ParseBool(os.Getenv(name))
+	if err != nil {
+		return def
+	}
+	return v
 }

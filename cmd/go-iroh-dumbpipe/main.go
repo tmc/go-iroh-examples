@@ -30,10 +30,11 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
+	"github.com/tmc/go-iroh/endpointticket"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/key"
 	"github.com/tmc/go-iroh/netaddr"
@@ -53,8 +54,8 @@ const (
 var errUsage = errors.New("usage")
 
 const usageText = `usage:
-  50-dumbpipe listen [-alpn v] [-no-relay] [-bind addr:port] [-advertise addr:port] [-key file] [-ticket file]
-  50-dumbpipe connect [-alpn v] [-bind addr:port] <endpoint-ticket>
+  go-iroh-dumbpipe listen [-alpn v] [-no-relay] [-bind addr:port] [-advertise addr:port] [-key file] [-ticket file]
+  go-iroh-dumbpipe connect [-alpn v] [-bind addr:port] <endpoint-ticket>
 
 With no arguments both halves run in one process over loopback.
 The listen command advertises a public relay by default. Use -no-relay for a
@@ -87,8 +88,8 @@ func run(args []string) error {
 	case "listen":
 		fs := newFlagSet("listen")
 		alpn := fs.String("alpn", dumbpipeALPN, "ALPN to accept")
-		bind := fs.String("bind", exampleutil.Env("GO_IROH_DUMBPIPE_BIND_ADDR", "[::1]:0"), "UDP address to bind")
-		advertise := fs.String("advertise", exampleutil.Env("GO_IROH_DUMBPIPE_ADVERTISE_ADDR", ""), "direct address to put in the printed ticket")
+		bind := fs.String("bind", env("GO_IROH_DUMBPIPE_BIND_ADDR", "[::1]:0"), "UDP address to bind ($GO_IROH_DUMBPIPE_BIND_ADDR)")
+		advertise := fs.String("advertise", env("GO_IROH_DUMBPIPE_ADVERTISE_ADDR", ""), "direct address to put in the printed ticket ($GO_IROH_DUMBPIPE_ADVERTISE_ADDR)")
 		relayFlag := fs.Bool("relay", true, "advertise a public relay address")
 		noRelay := fs.Bool("no-relay", false, "disable public relay advertising")
 		keyPath := fs.String("key", "", "endpoint secret key file, created if missing")
@@ -99,7 +100,7 @@ func run(args []string) error {
 		if fs.NArg() != 0 {
 			return usage()
 		}
-		useRelay := (*relayFlag && !*noRelay) || exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false)
+		useRelay := (*relayFlag && !*noRelay) || envBool("GO_IROH_LIVE_RELAY", false)
 		return listen(listenConfig{
 			alpn:       *alpn,
 			bind:       *bind,
@@ -111,7 +112,7 @@ func run(args []string) error {
 	case "connect":
 		fs := newFlagSet("connect")
 		alpn := fs.String("alpn", dumbpipeALPN, "ALPN to negotiate")
-		bind := fs.String("bind", exampleutil.Env("GO_IROH_DUMBPIPE_BIND_ADDR", "[::1]:0"), "UDP address to bind")
+		bind := fs.String("bind", env("GO_IROH_DUMBPIPE_BIND_ADDR", "[::1]:0"), "UDP address to bind ($GO_IROH_DUMBPIPE_BIND_ADDR)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return help(err)
 		}
@@ -152,7 +153,7 @@ func demo() error {
 
 	input := []byte("pipe hello\n")
 
-	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(dumbpipeALPN))
+	server, err := bindLoopback(ctx, iroh.WithALPNs(dumbpipeALPN))
 	if err != nil {
 		return err
 	}
@@ -178,13 +179,13 @@ func demo() error {
 		done <- err
 	}()
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bindLoopback(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	conn, err := client.Connect(ctx, exampleutil.Addr(server), dumbpipeALPN)
+	conn, err := client.Connect(ctx, server.Addr(), dumbpipeALPN)
 	if err != nil {
 		return err
 	}
@@ -200,7 +201,7 @@ func demo() error {
 	if _, err := stream.Write(input); err != nil {
 		return err
 	}
-	if err := stream.Close(); err != nil {
+	if err := stream.CloseWrite(); err != nil {
 		return err
 	}
 	if err := <-done; err != nil {
@@ -260,13 +261,13 @@ func listen(cfg listenConfig) error {
 		}
 		addr = netaddr.NewEndpointAddr(ep.ID()).WithIP(ap)
 	}
-	ticket := exampleutil.EncodeTicket(addr)
+	ticket := endpointticket.Encode(addr)
 	if cfg.ticketPath != "" {
 		if err := os.WriteFile(cfg.ticketPath, []byte(ticket+"\n"), 0o644); err != nil {
 			return fmt.Errorf("write ticket: %w", err)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Listening.\nGo:   go run ./cmd/50-dumbpipe connect %s\n", ticket)
+	fmt.Fprintf(os.Stderr, "Listening.\nGo:   go run ./cmd/go-iroh-dumbpipe connect %s\n", ticket)
 	if cfg.alpn == dumbpipeALPN {
 		fmt.Fprintf(os.Stderr, "Rust: dumbpipe connect %s\n", ticket)
 	}
@@ -287,12 +288,12 @@ func listen(cfg listenConfig) error {
 			return err
 		}
 	}
-	return exampleutil.Forward(os.Stdin, os.Stdout, stream)
+	return forward(os.Stdin, os.Stdout, stream)
 }
 
 func connect(alpn, bind, ticket string) error {
 	ctx := context.Background()
-	addr, err := exampleutil.DecodeTicket(ticket)
+	addr, err := endpointticket.Decode(ticket)
 	if err != nil {
 		return err
 	}
@@ -331,7 +332,7 @@ func connect(alpn, bind, ticket string) error {
 			return err
 		}
 	}
-	return exampleutil.Forward(os.Stdin, os.Stdout, stream)
+	return forward(os.Stdin, os.Stdout, stream)
 }
 
 func online(ctx context.Context, ep *iroh.Endpoint) error {
@@ -394,4 +395,72 @@ func readHandshake(r io.Reader) error {
 		return fmt.Errorf("invalid dumbpipe handshake %q", string(buf))
 	}
 	return nil
+}
+
+// env returns the environment variable name, or def if it is unset or empty.
+// The flags use it for their defaults so that a flag and an environment
+// variable configure the same thing.
+func env(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
+
+// envBool is env for a boolean. An unparseable value yields def.
+func envBool(name string, def bool) bool {
+	v, err := strconv.ParseBool(env(name, ""))
+	if err != nil {
+		return def
+	}
+	return v
+}
+
+// bindLoopback binds an endpoint to an ephemeral IPv6 loopback port, which
+// keeps the in-process demo self-contained: no relay, no DNS, no network
+// access. Options given by the caller are applied after the bind address, so
+// they may override it.
+func bindLoopback(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// forward copies stdin into stream and stream into stdout until both directions
+// end, closing the stream's write side when stdin is exhausted. It returns the
+// first error from either direction.
+//
+// stream is an [io.ReadWriteCloser] rather than an [iroh.Stream] so that the
+// half-close is expressed the way the standard library expresses it: probe for
+// CloseWrite, and fall back to Close for something with no separate write side.
+func forward(stdin io.Reader, stdout io.Writer, stream io.ReadWriteCloser) error {
+	errc := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(stream, stdin)
+		if closeErr := closeWrite(stream); err == nil {
+			err = closeErr
+		}
+		errc <- err
+	}()
+	go func() {
+		_, err := io.Copy(stdout, stream)
+		errc <- err
+	}()
+	var firstErr error
+	for range 2 {
+		if err := <-errc; err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// closeWrite ends c's write side without disturbing its read side, so that a
+// peer reading to EOF sees one while the reply is still on its way back.
+func closeWrite(c io.Closer) error {
+	if cw, ok := c.(interface{ CloseWrite() error }); ok {
+		return cw.CloseWrite()
+	}
+	return c.Close()
 }

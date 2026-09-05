@@ -18,15 +18,21 @@
 // [github.com/tmc/go-iroh/metrics.Registry] so that a process exports them
 // together. Reach for that when something scrapes; reach for these fields when
 // a person is reading.
+//
+// Counters say how much; they do not say why. When the question is what QUIC
+// did on one connection — which packets were lost, how the congestion window
+// moved, where the handshake spent its time — go-iroh-qlog-tracing records a qlog
+// trace instead.
 package main
 
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/netip"
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -43,7 +49,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(alpn))
+	server, err := bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
 	}
@@ -56,22 +62,22 @@ func run() error {
 			served <- fmt.Errorf("accept: %w", err)
 			return
 		}
-		served <- exampleutil.Echo(ctx, conn)
+		served <- echo(ctx, conn)
 	}()
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
+	conn, err := client.Connect(ctx, server.Addr(), alpn)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", server.ID().Short(), err)
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exampleutil.Exchange(ctx, conn, "metrics hello")
+	reply, err := exchange(ctx, conn, "metrics hello")
 	if err != nil {
 		return err
 	}
@@ -87,4 +93,51 @@ func run() error {
 	fmt.Printf("client connects: started=%d accepted=%d failed=%d\n", cm.ConnectsStarted, cm.ConnectsAccepted, cm.ConnectsFailed)
 	fmt.Printf("server accepts: started=%d accepted=%d failed=%d\n", sm.AcceptsStarted, sm.AcceptsAccepted, sm.AcceptsFailed)
 	return nil
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port. Loopback keeps
+// the example self-contained: no relay, no DNS, no network access.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// echo accepts one bidirectional stream, reads it to EOF, and writes back what
+// it read. It is the server half of exchange.
+func echo(ctx context.Context, conn *iroh.Conn) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write(b); err != nil {
+		return err
+	}
+	return s.Close()
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

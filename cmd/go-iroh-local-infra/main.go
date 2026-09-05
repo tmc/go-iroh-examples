@@ -21,10 +21,10 @@ import (
 	"fmt"
 	"io"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/dns"
 	"github.com/tmc/go-iroh/dnsserver"
 	"github.com/tmc/go-iroh/iroh"
@@ -90,7 +90,7 @@ func run() error {
 	var serverLookups iroh.AddressLookupServices
 	serverLookups.AddPublisher(publisher)
 
-	server, err := exampleutil.Bind(ctx,
+	server, err := bind(ctx,
 		iroh.WithSecretKey(serverKey),
 		iroh.WithALPNs(alpn),
 		iroh.WithRelayMode(mode),
@@ -118,7 +118,7 @@ func run() error {
 			accepted <- err
 			return
 		}
-		accepted <- exampleutil.Echo(ctx, conn)
+		accepted <- echo(ctx, conn)
 	}()
 
 	// The client resolves through the same local relay and knows only the ID.
@@ -129,7 +129,7 @@ func run() error {
 	var clientLookups iroh.AddressLookupServices
 	clientLookups.AddResolver(resolver)
 
-	client, err := exampleutil.Bind(ctx,
+	client, err := bind(ctx,
 		iroh.WithRelayMode(mode),
 		iroh.WithAddressLookup(&clientLookups),
 	)
@@ -143,24 +143,20 @@ func run() error {
 
 	// Publication is asynchronous: the endpoint pushes a packet when its own
 	// address settles. Wait for the record to appear, the way a peer that just
-	// received an ID out of band would retry.
-	//
-	// Note that the address has to be resolved before the dial. Connect only
-	// tries the addresses in the EndpointAddr it is given; WithAddressLookup
-	// feeds the per-remote state machine afterwards, it does not seed the
-	// first attempt.
-	addr, err := waitPublished(ctx, resolver, server.ID())
-	if err != nil {
+	// received an ID out of band would retry. Connect resolves the ID itself
+	// through the same lookup, but it asks once — a dial before the relay has
+	// the record fails with [iroh.ErrNoAddress] rather than waiting for it.
+	if err := waitPublished(ctx, resolver, server.ID()); err != nil {
 		return err
 	}
 
-	conn, err := client.Connect(ctx, addr, alpn)
+	conn, err := client.Connect(ctx, netaddr.NewEndpointAddr(server.ID()), alpn)
 	if err != nil {
 		return fmt.Errorf("dial by id: %w", err)
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exampleutil.Exchange(ctx, conn, "local infra hello")
+	reply, err := exchange(ctx, conn, "local infra hello")
 	if err != nil {
 		return err
 	}
@@ -168,7 +164,7 @@ func run() error {
 		return err
 	}
 	fmt.Println("reply:", reply)
-	fmt.Println("path:", exampleutil.SelectedPathKind(conn.Paths()))
+	fmt.Println("path:", selectedPathKind(conn.Paths()))
 
 	// Both servers implement the metrics source interface, so a deployment can
 	// scrape them through one registry.
@@ -187,23 +183,88 @@ func run() error {
 	return nil
 }
 
-// waitPublished polls the pkarr relay until it has a record for id and returns
-// the address it found.
-func waitPublished(ctx context.Context, r *iroh.PkarrResolver, id key.EndpointID) (netaddr.EndpointAddr, error) {
+// waitPublished polls the pkarr relay until it has a record for id.
+func waitPublished(ctx context.Context, r *iroh.PkarrResolver, id key.EndpointID) error {
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		for item, err := range r.Resolve(ctx, id) {
 			if err == nil && item.EndpointID().Equal(id) {
-				addr := item.Addr()
-				fmt.Println("resolved by id:", len(addr.Addrs()), "address(es)")
-				return addr, nil
+				fmt.Println("resolved by id:", len(item.Addr().Addrs()), "address(es)")
+				return nil
 			}
 		}
 		select {
 		case <-ctx.Done():
-			return netaddr.EndpointAddr{}, fmt.Errorf("pkarr relay never published %s: %w", id, ctx.Err())
+			return fmt.Errorf("pkarr relay never published %s: %w", id, ctx.Err())
 		case <-ticker.C:
 		}
 	}
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, which keeps the
+// example self-contained: it needs no relay, no DNS, and no network access.
+// Additional options are applied after the bind address, so a caller may
+// override it.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// echo accepts one bidirectional stream, reads it to EOF, and writes back what
+// it read. It is the server half of exchange.
+func echo(ctx context.Context, conn *iroh.Conn) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write(b); err != nil {
+		return err
+	}
+	return s.Close()
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// selectedPathKind names the transport of the selected path: "relay", the
+// network of a direct address, "unknown", or "none" if no path is selected.
+func selectedPathKind(paths []iroh.PathInfo) string {
+	for _, p := range paths {
+		if !p.Selected {
+			continue
+		}
+		if p.Relayed {
+			return "relay"
+		}
+		if p.HasAddr {
+			return p.Addr.Network()
+		}
+		return "unknown"
+	}
+	return "none"
 }

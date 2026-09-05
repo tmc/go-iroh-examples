@@ -41,12 +41,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 )
@@ -191,7 +191,7 @@ func run() error {
 		if err != nil {
 			return
 		}
-		_ = exampleutil.Echo(ctx, conn)
+		_ = echo(ctx, conn)
 	}()
 
 	client, err := iroh.Bind(ctx,
@@ -219,13 +219,13 @@ func run() error {
 	}
 	defer conn.CloseWithError(0, "")
 	fmt.Println("handshake reached the server:", conn.RemoteID() == server.ID())
-	fmt.Println("path kind:", exampleutil.SelectedPathKind(conn.Paths()))
+	fmt.Println("path kind:", selectedPathKind(conn.Paths()))
 
 	// The handshake already crossed the bus; the counters below prove the
 	// application data does too. Exact packet counts depend on QUIC's pacing,
 	// so the example compares them rather than printing them.
 	toServer, toClient := b.count("server"), b.count("client")
-	reply, err := exampleutil.Exchange(ctx, conn, "over the bus")
+	reply, err := exchange(ctx, conn, "over the bus")
 	if err != nil {
 		return err
 	}
@@ -234,4 +234,61 @@ func run() error {
 	fmt.Println("bus carried server to client:", b.count("client") > toClient)
 	fmt.Println("bus dropped:", b.dropped.Load())
 	return nil
+}
+
+// selectedPathKind names the transport of the selected path: "relay", the
+// network of a direct address, "unknown", or "none" if no path is selected.
+// The bus reports "custom".
+func selectedPathKind(paths []iroh.PathInfo) string {
+	for _, p := range paths {
+		if !p.Selected {
+			continue
+		}
+		if p.Relayed {
+			return "relay"
+		}
+		if p.HasAddr {
+			return p.Addr.Network()
+		}
+		return "unknown"
+	}
+	return "none"
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// echo accepts one bidirectional stream, reads it to EOF, and writes it back.
+// It is the server half of exchange.
+func echo(ctx context.Context, conn *iroh.Conn) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write(b); err != nil {
+		return err
+	}
+	return s.Close()
 }

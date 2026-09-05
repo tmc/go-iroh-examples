@@ -32,12 +32,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"sort"
 	"time"
 
 	automerge "github.com/automerge/automerge-go"
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -61,7 +61,7 @@ func run() error {
 	receiverDoc := automerge.New()
 	synced := make(chan *automerge.Doc, 1)
 
-	server, err := exampleutil.Bind(ctx)
+	server, err := bind(ctx)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func run() error {
 	}
 	defer router.Shutdown(ctx)
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func run() error {
 		}
 	}
 
-	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
+	conn, err := client.Connect(ctx, server.Addr(), alpn)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", server.ID().Short(), err)
 	}
@@ -233,4 +233,13 @@ func printState(doc *automerge.Doc) error {
 		fmt.Printf("%s => %q\n", key, value)
 	}
 	return nil
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback keeps the example self-contained: no relay, no DNS, no network.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }

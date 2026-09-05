@@ -12,11 +12,10 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
-	// The address count proves the lookup answered rather than the dial
-	// falling back on something the client already had; the reply proves the
-	// address it answered with was dialable.
+	// Connect was given no address at all, so a reply proves the lookup both
+	// answered and answered with something dialable.
 	for _, want := range []string{
-		"resolved addresses: 1",
+		"addresses given to Connect: 0",
 		"discovered hello",
 	} {
 		if !strings.Contains(out, want) {

@@ -22,7 +22,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
 	"github.com/tmc/go-iroh/relay"
@@ -105,14 +104,14 @@ func run() error {
 	if !ok {
 		return fmt.Errorf("path watch closed before initial snapshot")
 	}
-	fmt.Println("initial selected:", exampleutil.SelectedPathKind(initial))
+	fmt.Println("initial selected:", selectedPathKind(initial))
 
 	server.AddExternalAddr(server.LocalAddr())
 	client.AddExternalAddr(client.LocalAddr())
 
 	upgraded := waitForDirect(ctx, watch, 20*time.Second)
 	fmt.Println("direct upgrade observed:", upgraded)
-	fmt.Println("current selected:", exampleutil.SelectedPathKind(conn.Paths()))
+	fmt.Println("current selected:", selectedPathKind(conn.Paths()))
 	return nil
 }
 
@@ -125,7 +124,7 @@ func waitForDirect(ctx context.Context, watch <-chan []iroh.PathInfo, d time.Dur
 			if !ok {
 				return false
 			}
-			if exampleutil.SelectedPathKind(paths) == "ip" {
+			if selectedPathKind(paths) == "ip" {
 				return true
 			}
 		case <-timer.C:
@@ -134,4 +133,22 @@ func waitForDirect(ctx context.Context, watch <-chan []iroh.PathInfo, d time.Dur
 			return false
 		}
 	}
+}
+
+// selectedPathKind names the transport of the selected path: "relay", the
+// network of a direct address, "unknown", or "none" if no path is selected.
+func selectedPathKind(paths []iroh.PathInfo) string {
+	for _, p := range paths {
+		if !p.Selected {
+			continue
+		}
+		if p.Relayed {
+			return "relay"
+		}
+		if p.HasAddr {
+			return p.Addr.Network()
+		}
+		return "unknown"
+	}
+	return "none"
 }

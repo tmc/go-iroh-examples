@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -29,5 +28,5 @@ func (loggingEchoHandler) OnAccepting(ctx context.Context, accepting *iroh.Accep
 
 // Accept handles the verified connection by echoing one message.
 func (loggingEchoHandler) Accept(ctx context.Context, conn *iroh.Conn) error {
-	return exampleutil.Echo(ctx, conn)
+	return echo(ctx, conn)
 }

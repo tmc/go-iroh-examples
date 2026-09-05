@@ -22,11 +22,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 )
 
@@ -46,27 +47,27 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	server, err := exampleutil.Bind(ctx)
+	server, err := bind(ctx)
 	if err != nil {
 		return err
 	}
 
 	router, err := iroh.NewRouter(server, map[string]iroh.ProtocolHandler{
-		echoALPN:  exampleutil.Handler{},
-		upperALPN: exampleutil.Handler{Transform: strings.ToUpper},
+		echoALPN:  handler{},
+		upperALPN: handler{transform: strings.ToUpper},
 	}, nil)
 	if err != nil {
 		return err
 	}
 	defer router.Shutdown(ctx)
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	addr := exampleutil.Addr(server)
+	addr := server.Addr()
 	echoConn, err := client.Connect(ctx, addr, echoALPN)
 	if err != nil {
 		return fmt.Errorf("connect for %s: %w", echoALPN, err)
@@ -81,11 +82,11 @@ func run() error {
 
 	// The same request over both connections. Only the ALPN differs, so the
 	// two replies are the dispatch.
-	echoReply, err := exampleutil.Exchange(ctx, echoConn, "multi hello")
+	echoReply, err := exchange(ctx, echoConn, "multi hello")
 	if err != nil {
 		return err
 	}
-	upperReply, err := exampleutil.Exchange(ctx, upperConn, "multi hello")
+	upperReply, err := exchange(ctx, upperConn, "multi hello")
 	if err != nil {
 		return err
 	}
@@ -93,4 +94,68 @@ func run() error {
 	fmt.Println("echo:", echoReply)
 	fmt.Println("upper:", upperReply)
 	return nil
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, so that the
+// example is self-contained: no relay, no DNS, no network access. Options given
+// by the caller are applied after the bind address and may override it.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// transform accepts one bidirectional stream, reads it to EOF, and writes back
+// f applied to what it read. It is the server half of exchange.
+func transform(ctx context.Context, conn *iroh.Conn, f func(string) string) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write([]byte(f(string(b)))); err != nil {
+		return err
+	}
+	return s.Close()
+}
+
+// handler serves one transform exchange per connection. The zero handler
+// echoes.
+type handler struct {
+	// transform maps a request to a response. If nil, the request is echoed.
+	transform func(string) string
+}
+
+// Accept implements [iroh.ProtocolHandler].
+func (h handler) Accept(ctx context.Context, conn *iroh.Conn) error {
+	f := h.transform
+	if f == nil {
+		f = func(s string) string { return s }
+	}
+	return transform(ctx, conn, f)
 }

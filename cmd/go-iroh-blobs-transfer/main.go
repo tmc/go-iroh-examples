@@ -32,10 +32,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/netip"
 	"os"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/blobs"
 	"github.com/tmc/go-iroh/iroh"
 )
@@ -53,8 +53,8 @@ func main() {
 }
 
 func run(args []string) error {
-	fs := flag.NewFlagSet("40-blobs-transfer", flag.ContinueOnError)
-	file := fs.String("file", exampleutil.Env("IROH_EXAMPLE_FILE", ""), "file to serve instead of the built-in payload")
+	fs := flag.NewFlagSet("go-iroh-blobs-transfer", flag.ContinueOnError)
+	file := fs.String("file", env("IROH_EXAMPLE_FILE", ""), "file to serve instead of the built-in payload ($IROH_EXAMPLE_FILE)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func run(args []string) error {
 	}
 	hash := blobs.NewHash(payload)
 
-	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(blobs.ALPN))
+	server, err := bind(ctx, iroh.WithALPNs(blobs.ALPN))
 	if err != nil {
 		return err
 	}
@@ -90,13 +90,13 @@ func run(args []string) error {
 		serverErr <- serve(ctx, server, store)
 	}()
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	conn, err := client.Connect(ctx, exampleutil.Addr(server), blobs.ALPN)
+	conn, err := client.Connect(ctx, server.Addr(), blobs.ALPN)
 	if err != nil {
 		return fmt.Errorf("connect to provider: %w", err)
 	}
@@ -135,4 +135,22 @@ func serve(ctx context.Context, ep *iroh.Endpoint, store blobs.Store) error {
 		return err
 	}
 	return blobs.ServeBlob(ctx, s, store)
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback keeps the example self-contained: no relay, no DNS, no network.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// env returns the environment variable name, or def if it is unset or empty, so
+// that the flag and the variable configure the same thing.
+func env(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
 }

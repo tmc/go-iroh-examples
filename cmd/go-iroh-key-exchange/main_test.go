@@ -16,8 +16,7 @@ func TestRun(t *testing.T) {
 		"default server, default client: X25519MLKEM768, both ends agree: true",
 		"default server, classical client: X25519, both ends agree: true",
 		"pq-only server, default client: X25519MLKEM768, both ends agree: true",
-		"pq-only server, classical client: refused: CRYPTO_ERROR 0x128",
-		"tls: handshake failure",
+		"pq-only server, classical client: refused: no key exchange group in common",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\n%s", want, out)

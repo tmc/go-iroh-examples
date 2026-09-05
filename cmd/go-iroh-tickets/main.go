@@ -18,17 +18,18 @@ import (
 	"encoding/base32"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/endpointticket"
 	"github.com/tmc/go-iroh/iroh"
 )
 
 const (
-	alpn           = "go-iroh-examples/app-envelope-ticket/1"
+	alpn           = "go-iroh-examples/tickets/1"
 	envelopePrefix = "roomticket"
 )
 
@@ -53,7 +54,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(alpn))
+	server, err := bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
 	}
@@ -63,23 +64,23 @@ func run() error {
 		if err != nil {
 			return
 		}
-		_ = exampleutil.Echo(ctx, conn)
+		_ = echo(ctx, conn)
 	}()
 
 	// This is the string a peer would be sent. It starts with "endpoint" and is
 	// lowercase base32, so it survives a paste anywhere.
-	ticket := exampleutil.EncodeTicket(exampleutil.Addr(server))
+	ticket := endpointticket.Encode(server.Addr())
 	fmt.Println("ticket prefix:", strings.HasPrefix(ticket, endpointticket.Kind))
 
 	// The receiving side knows only the string.
-	addr, err := exampleutil.DecodeTicket(ticket)
+	addr, err := endpointticket.Decode(ticket)
 	if err != nil {
 		return err
 	}
 	fmt.Println("same endpoint:", addr.ID == server.ID())
 	fmt.Println("addresses:", len(addr.Addrs()))
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
@@ -91,7 +92,7 @@ func run() error {
 	}
 	defer conn.CloseWithError(0, "")
 
-	reply, err := exampleutil.Exchange(ctx, conn, "ticket hello")
+	reply, err := exchange(ctx, conn, "ticket hello")
 	if err != nil {
 		return err
 	}
@@ -142,4 +143,52 @@ func unwrapTicket(s string) (room, query, ticket string, err error) {
 		return "", "", "", fmt.Errorf("app envelope: parse ticket: %w", err)
 	}
 	return env.Room, env.Query, env.Ticket, nil
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, so that the
+// example is self-contained: no relay, no DNS, no network access. Options given
+// by the caller are applied after the bind address and may override it.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
+}
+
+// exchange opens a bidirectional stream, writes msg, closes the write side, and
+// reads the reply until EOF.
+func exchange(ctx context.Context, conn *iroh.Conn, msg string) (string, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.Write([]byte(msg)); err != nil {
+		return "", err
+	}
+	// Half-close: the peer reads to EOF and replies on the same stream.
+	if err := s.CloseWrite(); err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// echo accepts one bidirectional stream, reads it to EOF, and writes back what
+// it read. It is the server half of exchange.
+func echo(ctx context.Context, conn *iroh.Conn) error {
+	s, err := conn.AcceptStream(ctx)
+	if err != nil {
+		return err
+	}
+	b, err := io.ReadAll(s)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write(b); err != nil {
+		return err
+	}
+	return s.Close()
 }

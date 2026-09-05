@@ -45,11 +45,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"os"
 	"slices"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/blobs"
 	"github.com/tmc/go-iroh/docs"
 	"github.com/tmc/go-iroh/iroh"
@@ -74,7 +74,7 @@ type replica struct {
 }
 
 func newReplica(ctx context.Context, name string, authorSeed byte) (*replica, error) {
-	ep, err := exampleutil.Bind(ctx, iroh.WithALPNs(docs.ALPN))
+	ep, err := bind(ctx, iroh.WithALPNs(docs.ALPN))
 	if err != nil {
 		return nil, fmt.Errorf("%s: bind: %w", name, err)
 	}
@@ -180,7 +180,7 @@ func run() error {
 	// The ticket is the whole join: a write capability plus somewhere to sync
 	// with. On a real network the address would carry a relay URL; here it is
 	// the loopback socket alice is bound to.
-	ticket := docs.NewTicket(docs.NewWriteCapability(namespace), []netaddr.EndpointAddr{exampleutil.Addr(alice.ep)})
+	ticket := docs.NewTicket(docs.NewWriteCapability(namespace), []netaddr.EndpointAddr{alice.ep.Addr()})
 	wire := ticket.EncodeString()
 
 	// Everything below this point is what bob can do knowing only the string.
@@ -318,4 +318,13 @@ func printDocument(title string, r *replica, names map[string]string) {
 	for _, row := range rows {
 		fmt.Println(row)
 	}
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback keeps the example self-contained: no relay, no DNS, no network.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }
