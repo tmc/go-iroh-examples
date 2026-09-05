@@ -16,6 +16,12 @@
 // fetch has is the hash, the blob size, and how far the first one got. Both
 // pieces are then concatenated and compared with the original.
 //
+// The payload is small on purpose. In go-iroh v0.1.1 a range that begins at or
+// past the second 16 KiB verification block fails with "invalid blob: hash
+// mismatch", so a resumed download of anything larger than one block does not
+// work yet; both ranges here fall inside the first block. Resuming a real file
+// needs a fixed go-iroh.
+//
 // Compare go-iroh-blobs-transfer, which requests the whole blob over the same protocol
 // from the same kind of store. Read the two together: the difference between a
 // download and a resumed download is the range in the request.

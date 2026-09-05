@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/blobs"
+	"github.com/tmc/go-iroh/iroh"
 )
 
 func TestRun(t *testing.T) {
@@ -42,5 +46,61 @@ func TestChunkCount(t *testing.T) {
 		if got := chunkCount(tt.size); got != tt.want {
 			t.Errorf("chunkCount(%d) = %d, want %d (%s)", tt.size, got, tt.want, tt.name)
 		}
+	}
+}
+
+// TestRangePastFirstBlock pins the go-iroh limitation the doc comment
+// describes, so that the day it is fixed this test says so instead of the
+// example quietly continuing to under-claim what ranges can do.
+//
+// Verification is a BLAKE3 tree over 16 KiB blocks. A range wholly inside the
+// first block verifies; one that begins at the second block does not, and the
+// payload has to be non-periodic to see it — a pattern whose period divides the
+// block size hashes equal even when the wrong bytes arrive.
+func TestRangePastFirstBlock(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	const blockChunks = 16 * 1024 / blobs.ChunkSize
+	payload := make([]byte, 64*1024)
+	for i := range payload {
+		payload[i] = byte(i*7 + i/251)
+	}
+	store, err := blobs.NewMemStore(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := blobs.NewHash(payload)
+	size := uint64(len(payload))
+
+	server, err := bind(ctx, iroh.WithALPNs(blobs.ALPN))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Shutdown(ctx)
+	go serveBlobs(ctx, server, store, make(chan error, 1))
+
+	client, err := bind(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Shutdown(ctx)
+	addr := server.Addr()
+
+	got, err := getRange(ctx, client, addr, hash, blobs.RangeChunks(0, blockChunks), size)
+	if err != nil {
+		t.Fatalf("range inside the first block: %v", err)
+	}
+	if !bytes.Equal(got, payload[:16*1024]) {
+		t.Error("range inside the first block returned the wrong bytes")
+	}
+
+	_, err = getRange(ctx, client, addr, hash, blobs.RangeChunks(blockChunks, 2*blockChunks), size)
+	if err == nil {
+		t.Fatal("a range beginning at the second block now verifies: go-iroh is fixed, " +
+			"so widen this example's payload and drop the caveat in its doc comment")
+	}
+	if !strings.Contains(err.Error(), "hash mismatch") {
+		t.Fatalf("range beginning at the second block: got %v, want a hash mismatch", err)
 	}
 }
