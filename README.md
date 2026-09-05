@@ -97,8 +97,7 @@ the answer you came for is. Gaps between groups are room for later insertions;
 |---|---|
 | `go-iroh-dumbpipe` | piping stdin to stdout over iroh, wire-compatible with Rust `dumbpipe` |
 | `go-iroh-doctor` | relay status, net report, latencies, and selected path |
-| `go-iroh-public-server` | binding a reachable UDP address and advertising it |
-| `go-iroh-connect-public` | dialing a peer by ID plus public IP or relay URL |
+| `go-iroh-public-endpoint` | binding a reachable UDP address, and dialing one by ID plus coordinates |
 
 ### Configuration
 
@@ -119,8 +118,7 @@ from the environment, and their tests skip with a message naming what to set.
 | `go-iroh-pkarr-publish-resolve` | `-live` | `GO_IROH_LIVE_PKARR` |
 | `go-iroh-relay-online` | `-live` | `GO_IROH_LIVE_RELAY` |
 | `go-iroh-net-report` | `-live` | `GO_IROH_LIVE_RELAY` |
-| `go-iroh-public-server` | `-port`, `-alpn`, `-serve`, `-live` | `IROH_EXAMPLE_PORT`, `IROH_EXAMPLE_ALPN`, `IROH_EXAMPLE_SERVE`, `GO_IROH_LIVE_RELAY` |
-| `go-iroh-connect-public` | `-peer-id`, `-peer-ip`, `-peer-relay`, `-alpn` | `IROH_EXAMPLE_PEER_ID`, `IROH_EXAMPLE_PEER_IP`, `IROH_EXAMPLE_PEER_RELAY`, `IROH_EXAMPLE_ALPN` |
+| `go-iroh-public-endpoint` | `-port`, `-alpn`, `-serve`, `-live`, `-peer-id`, `-peer-ip`, `-peer-relay` | `IROH_EXAMPLE_PORT`, `IROH_EXAMPLE_ALPN`, `IROH_EXAMPLE_SERVE`, `GO_IROH_LIVE_RELAY`, `IROH_EXAMPLE_PEER_ID`, `IROH_EXAMPLE_PEER_IP`, `IROH_EXAMPLE_PEER_RELAY` |
 
 Flags win over the environment, and `-h` lists each flag with the variable it
 falls back to. Two loopback examples also take configuration:
@@ -134,8 +132,8 @@ diagnoses an in-process relay and needs no network.
 Serve from one machine and dial from another:
 
 ```sh
-go run ./cmd/go-iroh-public-server -port 4433 -serve
-go run ./cmd/go-iroh-connect-public -peer-id <id> -peer-ip <host:port>
+go run ./cmd/go-iroh-public-endpoint listen -port 4433 -serve
+go run ./cmd/go-iroh-public-endpoint connect -peer-id <id> -peer-ip <host:port>
 ```
 
 ## Rust interoperability

@@ -27,8 +27,8 @@ rename breaks is a bookmark or a copied command line.
 | `08-hooks` | `go-iroh-hooks` |  |
 | `09-metrics` | `go-iroh-metrics` |  |
 | `10-multi-alpn` | `go-iroh-multi-alpn` |  |
-| `11-public-server` | `go-iroh-public-server` |  |
-| `12-connect-public` | `go-iroh-connect-public` |  |
+| `11-public-server` | `go-iroh-public-endpoint` | merged, below |
+| `12-connect-public` | `go-iroh-public-endpoint` | merged, below |
 | `13-relay-online` | `go-iroh-relay-online` |  |
 | `14-dns-resolve` | `go-iroh-dns-resolve` |  |
 | `15-pkarr-publish-resolve` | `go-iroh-pkarr-publish-resolve` |  |
@@ -57,6 +57,12 @@ rename breaks is a bookmark or a copied command line.
 | `42-iroh-automerge` | `go-iroh-automerge` |  |
 | `43-iroh-smol-kv` | `go-iroh-gossip-kv` |  |
 | `44-iroh-gateway` | `go-iroh-blobs-gateway` |  |
+
+Merged:
+
+| Was | Into | Why |
+|---|---|---|
+| `11-public-server`, `12-connect-public` | `go-iroh-public-endpoint` | two halves of one exercise: neither ran alone, both needed a real network, and the server printed an address in pieces only because the dialer took those pieces as flags |
 
 Removed:
 
