@@ -7,14 +7,25 @@
 // iroh exists, which is the reason to run one: it is how hash-addressed content
 // reaches clients that can only fetch URLs.
 //
-// Two routes are served. /blob/<hash> returns one blob — the transfer
-// go-iroh-blobs-transfer does with no HTTP in front of it — and
-// /collection/<root>/<name> returns one named entry from a collection, which is
-// how a directory of files is addressed by a single hash. Both routes hand the
-// fetched bytes to [http.ServeContent], which is what makes Range
-// requests work: the example asks for bytes 6-10 and gets 206 Partial Content
-// with a Content-Range header, the request a media player makes when a viewer
-// seeks.
+// Four routes are served, the same set as the Rust gateway. /blob/<hash>
+// returns one blob — the transfer go-iroh-blobs-transfer does with no HTTP in
+// front of it — and /collection/<root>/<name> returns one named entry from a
+// collection, which is how a directory of files is addressed by a single hash.
+// Both resolve against one provider the gateway was configured with, so the URL
+// names content and nothing else.
+//
+// /ticket/<ticket> and /ticket/<ticket>/<name> lift that restriction. A blob
+// ticket ([blobs.Ticket]) packs a provider's address together with the hash and
+// the blob format, so a URL carrying one names both what to fetch and who from,
+// and the gateway serves content it had no prior connection to. The format in
+// the ticket decides what /ticket/<ticket> means: a raw ticket is one blob, and
+// a hash-sequence ticket is a collection, answered with its index so that the
+// entries can be linked to under /ticket/<ticket>/<name>.
+//
+// The blob routes hand the fetched bytes to [http.ServeContent], which is what
+// makes Range requests work: the example asks for bytes 6-10 and gets 206
+// Partial Content with a Content-Range header, the request a media player makes
+// when a viewer seeks.
 //
 // The gateway fetches the whole blob and lets ServeContent slice it, which is
 // the right trade only while blobs are small. A deployment serving large files
@@ -37,11 +48,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/blobs"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/netaddr"
@@ -63,7 +74,7 @@ func run() error {
 		return err
 	}
 
-	provider, err := exampleutil.Bind(ctx)
+	provider, err := bind(ctx)
 	if err != nil {
 		return err
 	}
@@ -75,7 +86,7 @@ func run() error {
 	}
 	defer router.Shutdown(ctx)
 
-	client, err := exampleutil.Bind(ctx)
+	client, err := bind(ctx)
 	if err != nil {
 		return err
 	}
@@ -85,7 +96,7 @@ func run() error {
 	// its bodies over iroh.
 	gateway := httptest.NewServer(gatewayHandler{
 		endpoint: client,
-		provider: exampleutil.Addr(provider),
+		provider: provider.Addr(),
 	})
 	defer gateway.Close()
 
@@ -116,7 +127,55 @@ func run() error {
 	}
 	defer resp.Body.Close()
 	fmt.Printf("GET /collection/%s/note.txt %s\n", collectionRoot.Short(), resp.Status)
+
+	// The ticket routes are the same fetches addressed differently: the URL
+	// carries the provider's address, so a gateway that was never told about
+	// this provider serves them just the same.
+	blobTicket := blobs.NewTicket(provider.Addr(), blobHash, blobs.Raw)
+	body, err = get(ctx, gateway.URL+"/ticket/"+blobTicket.EncodeString())
+	if err != nil {
+		return fmt.Errorf("get ticket blob: %w", err)
+	}
+	fmt.Printf("ticket blob: %q\n", body)
+
+	// A hash-sequence ticket names a collection, so the same route answers
+	// with its index instead of a blob body.
+	collectionTicket := blobs.NewTicket(provider.Addr(), collectionRoot, blobs.HashSeq)
+	body, err = get(ctx, gateway.URL+"/ticket/"+collectionTicket.EncodeString())
+	if err != nil {
+		return fmt.Errorf("get ticket index: %w", err)
+	}
+	fmt.Println("ticket index entries:", len(strings.Fields(string(body))))
+
+	// Each index line is a URL of the second ticket route, which serves one
+	// entry of the collection.
+	body, err = get(ctx, gateway.URL+strings.Fields(string(body))[0])
+	if err != nil {
+		return fmt.Errorf("get ticket entry: %w", err)
+	}
+	fmt.Printf("ticket entry: %q\n", body)
 	return nil
+}
+
+// get fetches url and returns its body, reporting any status other than 200.
+func get(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s: %s: %s", url, resp.Status, bytes.TrimSpace(body))
+	}
+	return body, nil
 }
 
 // newStore builds the content the provider serves: one blob, and a collection
@@ -171,6 +230,8 @@ func (h gatewayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.serveBlob(w, r)
 	case strings.HasPrefix(r.URL.Path, "/collection/"):
 		h.serveCollection(w, r)
+	case strings.HasPrefix(r.URL.Path, "/ticket/"):
+		h.serveTicket(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -183,7 +244,7 @@ func (h gatewayHandler) serveBlob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad blob hash", http.StatusBadRequest)
 		return
 	}
-	data, err := h.getBlob(r.Context(), hash)
+	data, err := h.getBlob(r.Context(), h.provider, hash)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -206,7 +267,54 @@ func (h gatewayHandler) serveCollection(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "bad collection hash", http.StatusBadRequest)
 		return
 	}
-	collection, data, err := h.getCollection(r.Context(), root)
+	h.serveEntry(w, r, h.provider, root, name)
+}
+
+// serveTicket answers the two ticket routes. Unlike the hash routes, the
+// address to fetch from comes out of the URL, so these serve content the
+// gateway was never configured with.
+func (h gatewayHandler) serveTicket(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/ticket/")
+	ticketText, name, hasName := strings.Cut(rest, "/")
+	ticket, err := blobs.DecodeString(ticketText)
+	if err != nil {
+		http.Error(w, "bad ticket", http.StatusBadRequest)
+		return
+	}
+	switch {
+	case hasName && name != "":
+		h.serveEntry(w, r, ticket.Addr(), ticket.Hash(), name)
+	case ticket.Format() == blobs.Raw:
+		data, err := h.getBlob(r.Context(), ticket.Addr(), ticket.Hash())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		http.ServeContent(w, r, ticket.Hash().String(), time.Time{}, bytes.NewReader(data))
+	default:
+		h.serveIndex(w, r, ticket)
+	}
+}
+
+// serveIndex lists the entries of the collection a hash-sequence ticket names,
+// linking each to the ticket route that serves it. The Rust gateway writes
+// HTML here; the links are the part that matters, and they are the same.
+func (h gatewayHandler) serveIndex(w http.ResponseWriter, r *http.Request, ticket blobs.Ticket) {
+	collection, _, err := h.getCollection(r.Context(), ticket.Addr(), ticket.Hash())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	for _, entry := range collection.Entries() {
+		fmt.Fprintf(w, "/ticket/%s/%s\n", ticket.EncodeString(), entry.Name)
+	}
+}
+
+// serveEntry serves the entry named name from the collection rooted at root on
+// provider.
+func (h gatewayHandler) serveEntry(w http.ResponseWriter, r *http.Request, provider netaddr.EndpointAddr, root blobs.Hash, name string) {
+	collection, data, err := h.getCollection(r.Context(), provider, root)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -220,8 +328,8 @@ func (h gatewayHandler) serveCollection(w http.ResponseWriter, r *http.Request) 
 	http.NotFound(w, r)
 }
 
-func (h gatewayHandler) getBlob(ctx context.Context, hash blobs.Hash) ([]byte, error) {
-	conn, err := h.endpoint.Connect(ctx, h.provider, blobs.ALPN)
+func (h gatewayHandler) getBlob(ctx context.Context, provider netaddr.EndpointAddr, hash blobs.Hash) ([]byte, error) {
+	conn, err := h.endpoint.Connect(ctx, provider, blobs.ALPN)
 	if err != nil {
 		return nil, fmt.Errorf("connect provider: %w", err)
 	}
@@ -237,8 +345,8 @@ func (h gatewayHandler) getBlob(ctx context.Context, hash blobs.Hash) ([]byte, e
 	return data, nil
 }
 
-func (h gatewayHandler) getCollection(ctx context.Context, root blobs.Hash) (blobs.Collection, [][]byte, error) {
-	conn, err := h.endpoint.Connect(ctx, h.provider, blobs.ALPN)
+func (h gatewayHandler) getCollection(ctx context.Context, provider netaddr.EndpointAddr, root blobs.Hash) (blobs.Collection, [][]byte, error) {
+	conn, err := h.endpoint.Connect(ctx, provider, blobs.ALPN)
 	if err != nil {
 		return blobs.Collection{}, nil, fmt.Errorf("connect provider: %w", err)
 	}
@@ -252,4 +360,13 @@ func (h gatewayHandler) getCollection(ctx context.Context, root blobs.Hash) (blo
 		return blobs.Collection{}, nil, fmt.Errorf("get collection: %w", err)
 	}
 	return collection, data, nil
+}
+
+// bind binds an endpoint to an ephemeral IPv6 loopback port, then applies opts.
+// Loopback keeps the example self-contained: no relay, no DNS, no network.
+func bind(ctx context.Context, opts ...iroh.Option) (*iroh.Endpoint, error) {
+	all := make([]iroh.Option, 0, len(opts)+1)
+	all = append(all, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	all = append(all, opts...)
+	return iroh.Bind(ctx, all...)
 }
