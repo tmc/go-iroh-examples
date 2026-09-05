@@ -234,6 +234,12 @@
       ]
     },
     {
+      "dir": "go-iroh-pkarr-packet",
+      "group": "finding-peers",
+      "summary": "builds, signs, and verifies a pkarr packet",
+      "doc": "Command go-iroh-pkarr-packet builds, signs, and verifies a pkarr packet.\n\ngo-iroh-pkarr-publish-resolve puts records on n0's pkarr relay and reads them\nback, and never sees the bytes in between. This example is the other half:\nthe [pkarr] package is the codec those bytes are in, exported so that a\nprogram which is not an iroh endpoint — a relay, a directory, a test — can\nproduce and check the same records.\n\nA pkarr packet is a DNS packet signed by the key it describes, so the key is\nboth the name and the authority for it: anyone holding the public key can\nverify the records without trusting whoever handed them over.\n\nFour things happen here, and none of them touch the network. A packet is\nsigned with [pkarr.FromTxtStrings] and read back with [pkarr.FromBytes],\nwhich verifies the signature; one byte of it is flipped, and parsing fails\nwith [pkarr.ErrSignature] while [pkarr.FromBytesUnchecked] still returns the\nrecords, because \"what does this say\" and \"should I believe it\" are separate\nquestions. The relay encoding is a third form of the same packet, and\n[pkarr.FromRelayPayload] reconstructs it from the public key. Finally two\npackets from one key are compared with MoreRecentThan, which is how a\nresolver decides that what it just fetched supersedes what it had."
+    },
+    {
       "dir": "go-iroh-relay-online",
       "group": "finding-peers",
       "summary": "joins the public relay map and waits to be reachable",

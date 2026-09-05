@@ -94,6 +94,7 @@ reason to expect a third.
 | `go-iroh-address-filtering` | `RelayOnlyFilter`, `IPOnlyFilter`, and a filter of your own |
 | `go-iroh-dns-resolve` | resolving an ID through n0's DNS origin |
 | `go-iroh-pkarr-publish-resolve` | publishing to and resolving from n0's pkarr relay |
+| `go-iroh-pkarr-packet` | building and verifying a pkarr signed packet, with no relay involved |
 | `go-iroh-relay-online` | the default relay map and `Endpoint.Online` |
 | `go-iroh-path-upgrade` | watching a relayed connection move to a direct path |
 | `go-iroh-path-selection` | replacing the policy that chooses a path, and dialing relay-first |

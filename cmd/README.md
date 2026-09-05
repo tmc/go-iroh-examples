@@ -89,3 +89,4 @@ Added:
 | `go-iroh-path-selection` | `WithPathSelector` and `WithRelayFirstDial`, neither used anywhere |
 | `go-iroh-relay-limits` | `relayserver.WithClientRate`, the last unexercised v0.1.1 API |
 | `go-iroh-blobs-store` | persistence, bulk download, tags and GC; the other blobs examples are all in memory |
+| `go-iroh-pkarr-packet` | the `pkarr` package, the signed-packet codec under pkarr publishing |
