@@ -2,6 +2,8 @@
 //!
 //! go-iroh-examples pins these bytes in a Go test so that a framing change on
 //! either side fails loudly instead of silently ending interoperability.
+//!
+//! Regenerate the Go vectors from this output: cargo run --bin vectors.
 
 use framed_messages::Move;
 
@@ -19,6 +21,10 @@ fn frame(mv: &Move) -> Vec<u8> {
 }
 
 fn main() {
+    // go-iroh-dumbpipe's protocol constants, from the dumbpipe crate itself.
+    println!("dumbpipe_alpn\t{}", hex(dumbpipe::ALPN));
+    println!("dumbpipe_handshake\t{}", hex(&dumbpipe::HANDSHAKE));
+
     println!("alpn\t{}", hex(framed_messages::ALPN));
     for (name, mv) in [
         ("white_e2e4", Move { from: (4, 2), to: (4, 4) }),

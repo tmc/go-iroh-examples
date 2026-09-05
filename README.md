@@ -184,8 +184,10 @@ dumbpipe listen
 printf 'hello from go\n' | go run ./cmd/go-iroh-dumbpipe connect <ticket>
 ```
 
-Both directions have been verified against Rust `dumbpipe` on loopback. The
-listener advertises a public relay by default, so the printed ticket is usable
+Both directions are tested against Rust `dumbpipe` rather than checked by hand:
+`interop/` builds a peer from the published `dumbpipe` crate, taking the ALPN
+and the handshake from the crate's own constants. The listener advertises a
+public relay by default, so the printed ticket is usable
 from another machine; `-no-relay` keeps it local. `-alpn` pipes bytes under any
 other protocol name and skips the dumbpipe handshake, which is netcat over iroh:
 
@@ -203,9 +205,11 @@ Ported from n0's corpus: `go-iroh-blobs-transfer` (sendme), `go-iroh-blobs-gatew
 `go-iroh-framed-messages`. `go-iroh-docs-sync` speaks `/iroh-sync/1`, and the three
 blobs examples speak `/iroh-bytes/4`.
 
-`go-iroh-framed-messages` is checked against the Rust implementation rather than
-described as compatible with it: `interop/` builds n0's own `framed-messages`
-crate as a live peer, and both directions are tested. See [interop/README.md](interop/README.md).
+`go-iroh-framed-messages` and `go-iroh-dumbpipe` are checked against the Rust
+implementations rather than described as compatible with them: `interop/` builds
+n0's own `framed-messages` crate and the published `dumbpipe` crate as live
+peers, and both directions of each are tested. See
+[interop/README.md](interop/README.md).
 
 ## What is not here
 
