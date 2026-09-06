@@ -1,3 +1,16 @@
+// Command 34-uni-streams publishes events over unidirectional streams.
+//
+// A unidirectional stream carries bytes one way and needs no reply, so the
+// sender never waits for the receiver and the receiver never has to correlate a
+// response. That makes one stream per message a reasonable design for telemetry,
+// logs, and notifications: each message is independently ordered and framed by
+// the stream's own close, so a slow consumer of one message does not stall the
+// next.
+//
+// Compare 03-direct-echo, where a bidirectional stream is a request and its
+// reply, and 18-callme-frames, where a datagram is used because a late message
+// is worth less than a dropped one. A unidirectional stream is the middle case:
+// reliable and ordered, but one-way.
 package main
 
 import (
@@ -5,12 +18,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/netip"
 	"os"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
-	"github.com/tmc/go-iroh/netaddr"
 )
 
 const alpn = "go-iroh-examples/uni-streams/1"
@@ -37,10 +49,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	server, err := iroh.Bind(ctx,
-		iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)),
-		iroh.WithALPNs(alpn),
-	)
+	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
 	}
@@ -52,14 +61,13 @@ func run() error {
 		received <- telemetryResult{events: events, err: err}
 	}()
 
-	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	client, err := exampleutil.Bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	addr := netaddr.NewEndpointAddr(server.ID()).WithIP(server.LocalAddr())
-	conn, err := client.Connect(ctx, addr, alpn)
+	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
 	if err != nil {
 		return err
 	}

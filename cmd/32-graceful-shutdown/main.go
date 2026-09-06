@@ -1,18 +1,30 @@
+// Command 32-graceful-shutdown drains in-flight work before closing an endpoint.
+//
+// Closing an endpoint while a handler is still running loses whatever that
+// handler had not finished. The ordered teardown is: stop accepting, let the
+// handlers that are already running reach a stopping point, then close the
+// endpoint. [iroh.Router.Shutdown] does the first two, and a handler that
+// implements Shutdown(ctx) is told when to stop taking new work — go-iroh calls
+// it as part of the router's drain.
+//
+// Everything else in this repository closes with a deferred Shutdown, which is
+// correct for a program that is about to exit anyway. This example is what a
+// server does instead: a signal arrives, the request in flight completes, and
+// only then does the endpoint go away.
 package main
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"net/netip"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
-	"github.com/tmc/go-iroh/netaddr"
 )
 
 const alpn = "go-iroh-examples/graceful-shutdown/1"
@@ -28,7 +40,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	server, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	server, err := exampleutil.Bind(ctx)
 	if err != nil {
 		return err
 	}
@@ -41,14 +53,13 @@ func run() error {
 		return err
 	}
 
-	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	client, err := exampleutil.Bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(context.Background())
 
-	addr := netaddr.NewEndpointAddr(server.ID()).WithIP(server.LocalAddr())
-	conn, err := client.Connect(ctx, addr, alpn)
+	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
 	if err != nil {
 		return err
 	}

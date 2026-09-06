@@ -1,7 +1,20 @@
+// Command 37-doctor reports what an endpoint can see of the network.
+//
+// It is the Go counterpart of n0's iroh-doctor: the questions to ask when a
+// connection is not behaving. Whether the endpoint reached a home relay, what
+// [iroh.NetReport] says about UDP and about the addresses the network reports
+// back, the round-trip time to each relay, and which path a live connection
+// actually selected.
+//
+// By default it diagnoses against an in-process [relayserver.Server], so it runs
+// anywhere and the numbers describe loopback. Pass -live (or set
+// GO_IROH_LIVE_RELAY=1) to run the same checks against n0's public relays, which
+// is where the answers are worth reading.
 package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,25 +33,31 @@ import (
 const alpn = "go-iroh-examples/doctor/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(args []string) error {
+	fs := flag.NewFlagSet("37-doctor", flag.ContinueOnError)
+	live := fs.Bool("live", exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false),
+		"diagnose against n0's public relays instead of an in-process one")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	live := os.Getenv("GO_IROH_LIVE_RELAY") == "1"
-	mode, relayURL, cleanup, err := relayMode(live)
+	mode, relayURL, cleanup, err := relayMode(*live)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	fmt.Println("live relay:", live)
-	if !live {
-		fmt.Println("set GO_IROH_LIVE_RELAY=1 to diagnose against public relays")
+	fmt.Println("live relay:", *live)
+	if !*live {
+		fmt.Println("pass -live or set GO_IROH_LIVE_RELAY=1 to diagnose against public relays")
 	}
 
 	server, err := iroh.Bind(ctx,

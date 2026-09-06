@@ -1,14 +1,28 @@
+// Command 35-close-codes reads the code and reason a peer closed with.
+//
+// QUIC lets the side that closes a connection attach an application error code
+// and a reason string, and both reach the other end. That is how a server says
+// "quota exceeded" rather than dropping the connection and leaving the client to
+// guess between a policy decision, a crash, and a network failure.
+//
+// The code arrives as the cause of the connection's context.
+// [iroh.AsApplicationError] separates an application close from a transport
+// failure, and its Remote field says which side closed. A client that retries
+// should look at both: a local timeout is worth retrying, a remote code 42 is
+// not.
+//
+// See 32-graceful-shutdown for closing an endpoint without cutting off work in
+// flight.
 package main
 
 import (
 	"context"
 	"fmt"
-	"net/netip"
 	"os"
 	"time"
 
+	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
-	"github.com/tmc/go-iroh/netaddr"
 )
 
 const alpn = "go-iroh-examples/close-codes/1"
@@ -24,10 +38,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	server, err := iroh.Bind(ctx,
-		iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)),
-		iroh.WithALPNs(alpn),
-	)
+	server, err := exampleutil.Bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
 	}
@@ -43,14 +54,13 @@ func run() error {
 		accepted <- conn.CloseWithError(42, "quota exceeded")
 	}()
 
-	client, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
+	client, err := exampleutil.Bind(ctx)
 	if err != nil {
 		return err
 	}
 	defer client.Shutdown(ctx)
 
-	addr := netaddr.NewEndpointAddr(server.ID()).WithIP(server.LocalAddr())
-	conn, err := client.Connect(ctx, addr, alpn)
+	conn, err := client.Connect(ctx, exampleutil.Addr(server), alpn)
 	if err != nil {
 		return err
 	}
