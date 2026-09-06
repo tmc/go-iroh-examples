@@ -113,13 +113,22 @@ func watchEndpointAddr(ctx context.Context) error {
 
 	updated := make(chan error, 1)
 	go func() {
-		addr, err := obs.Updated(ctx)
-		if err != nil {
-			updated <- err
-			return
+		// Updated reports the next value, whatever it is. An endpoint's
+		// address can change for reasons the caller did not ask for, so a
+		// caller waiting for one specific change keeps reading until it sees
+		// it rather than assuming the first update is the one it wanted.
+		for {
+			addr, err := obs.Updated(ctx)
+			if err != nil {
+				updated <- err
+				return
+			}
+			if containsAddr(addr.IPAddrs(), externalAddr()) {
+				fmt.Println("updated has external:", true)
+				updated <- nil
+				return
+			}
 		}
-		fmt.Println("updated has external:", containsAddr(addr.IPAddrs(), externalAddr()))
-		updated <- nil
 	}()
 
 	ep.AddExternalAddr(externalAddr())
