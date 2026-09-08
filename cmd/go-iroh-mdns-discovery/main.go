@@ -8,14 +8,15 @@
 // privately on loopback. Every one of them needs something in the middle.
 //
 // [mdns.Discovery] needs nothing. It announces the local endpoint's direct
-// addresses to 224.0.0.251 and caches the announcements other endpoints make,
-// so two machines on one link find each other with no relay, no DNS server,
-// and no pkarr relay — the reason to reach for it is a LAN, a lab bench, or a
-// conference wifi with no route to the internet. The cost is its scope: an
-// announcement travels one multicast hop and reaches nobody beyond it. It
-// implements [iroh.AddressPublisher] and [iroh.AddressResolver], so it
-// registers with [iroh.AddressLookupServices] like any other service and can
-// sit alongside pkarr, which covers the peers mDNS cannot see.
+// addresses to the mDNS multicast groups, 224.0.0.251 and ff02::fb, and caches
+// the announcements other endpoints make, so two machines that share a link of
+// either IP version find each other with no relay, no DNS server, and no pkarr
+// relay — the reason to reach for it is a LAN, a lab bench, or a conference
+// wifi with no route to the internet. The cost is its scope: an announcement
+// travels one multicast hop and reaches nobody beyond it. It implements
+// [iroh.AddressPublisher] and [iroh.AddressResolver], so it registers with
+// [iroh.AddressLookupServices] like any other service and can sit alongside
+// pkarr, which covers the peers mDNS cannot see.
 //
 // This example runs both halves: one endpoint announces itself, a second one
 // resolves it by ID and dials the address that comes back. The announcer

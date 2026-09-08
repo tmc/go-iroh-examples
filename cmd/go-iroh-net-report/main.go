@@ -9,10 +9,12 @@
 // is the first thing to read when a connection stays on a relayed path.
 //
 // The measurement is made by probing relay servers, so a direct-only endpoint
-// has nothing to measure against: [iroh.WithNetReport] enables the background
-// refreshes but the report never becomes available. That is what the default
-// run prints. With -live the endpoint joins the public relay map, the probes
-// have somewhere to go, and waitReport polls until the first report lands.
+// has nothing to measure against: an endpoint refreshes the report on its own
+// whenever it has relays, and with none the report never becomes available.
+// That is what the default run prints. With -live the endpoint joins the public
+// relay map, the probes have somewhere to go, and waitReport polls until the
+// first report lands. [iroh.WithoutNetReport] stops the refreshes for an
+// endpoint that has relays and does not want to spend packets measuring them.
 //
 // go-iroh-doctor prints these fields and more against an in-process relay, so it
 // gives real numbers with no network; go-iroh-relay-online is the relay opt-in on
@@ -56,7 +58,6 @@ func run(args []string) error {
 	ctx := context.Background()
 	opts := []iroh.Option{
 		iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)),
-		iroh.WithNetReport(),
 	}
 	if *live {
 		opts = append(opts, iroh.WithRelayMode(relay.ModeDefault()))

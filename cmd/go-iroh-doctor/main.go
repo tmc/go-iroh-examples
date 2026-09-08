@@ -70,7 +70,6 @@ func run(args []string) error {
 		iroh.WithALPNs(alpn),
 		iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)),
 		iroh.WithRelayMode(mode),
-		iroh.WithNetReport(),
 	)
 	if err != nil {
 		return err
