@@ -26,8 +26,9 @@ themselves unless the matching switch in
 
 Each `main.go` is a whole program: it imports go-iroh and the standard library
 and nothing from this repository, so a reader who copies one file has copied
-something that compiles. The tests do share helpers, because a reader copies
-the example and not its test. `go test` checks that too.
+something that compiles. The tests hold to the same rule: an example's output
+is asserted by handing `run` a `bytes.Buffer`, so a reader who copies the test
+has copied something that compiles too. `go test` checks that.
 
 ## Progression
 
@@ -38,8 +39,10 @@ They are also where that order is defined: `internal/catalog` reads the
 progression from this section, and `go test` fails if the tree and these tables
 disagree. An example is added by creating its directory and adding a row, and
 moved by moving its row. Nothing in a directory name encodes a position, so
-`cmd/README.md` records the two renamings there have been and there is no
-reason to expect a third.
+adding an example displaces nothing and the names are stable. The `go-iroh-`
+prefix is there for one reason: `go install ./cmd/...` names each binary after
+its directory, and a bare `doctor` or `dumbpipe` on somebody's PATH is not
+this repository's to claim.
 
 ### Identity and addressing
 
