@@ -59,13 +59,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -110,12 +110,12 @@ func run() error {
 		return fmt.Errorf("get blob: %w", err)
 	}
 	defer resp.Body.Close()
-	fmt.Printf("GET /blob/%s %s %s\n", blobHash.Short(), resp.Status, resp.Header.Get("Content-Range"))
+	fmt.Fprintf(stdout, "GET /blob/%s %s %s\n", blobHash.Short(), resp.Status, resp.Header.Get("Content-Range"))
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("range body: %q\n", body)
+	fmt.Fprintf(stdout, "range body: %q\n", body)
 
 	req, err = http.NewRequestWithContext(ctx, http.MethodGet, gateway.URL+"/collection/"+collectionRoot.String()+"/note.txt", nil)
 	if err != nil {
@@ -126,7 +126,7 @@ func run() error {
 		return fmt.Errorf("get collection entry: %w", err)
 	}
 	defer resp.Body.Close()
-	fmt.Printf("GET /collection/%s/note.txt %s\n", collectionRoot.Short(), resp.Status)
+	fmt.Fprintf(stdout, "GET /collection/%s/note.txt %s\n", collectionRoot.Short(), resp.Status)
 
 	// The ticket routes are the same fetches addressed differently: the URL
 	// carries the provider's address, so a gateway that was never told about
@@ -136,7 +136,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("get ticket blob: %w", err)
 	}
-	fmt.Printf("ticket blob: %q\n", body)
+	fmt.Fprintf(stdout, "ticket blob: %q\n", body)
 
 	// A hash-sequence ticket names a collection, so the same route answers
 	// with its index instead of a blob body.
@@ -145,7 +145,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("get ticket index: %w", err)
 	}
-	fmt.Println("ticket index entries:", len(strings.Fields(string(body))))
+	fmt.Fprintln(stdout, "ticket index entries:", len(strings.Fields(string(body))))
 
 	// Each index line is a URL of the second ticket route, which serves one
 	// entry of the collection.
@@ -153,7 +153,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("get ticket entry: %w", err)
 	}
-	fmt.Printf("ticket entry: %q\n", body)
+	fmt.Fprintf(stdout, "ticket entry: %q\n", body)
 	return nil
 }
 

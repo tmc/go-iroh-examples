@@ -39,13 +39,13 @@ import (
 const alpn = "go-iroh-examples/metrics/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -89,9 +89,9 @@ func run() error {
 
 	cm := client.Metrics()
 	sm := server.Metrics()
-	fmt.Println(reply)
-	fmt.Printf("client connects: started=%d accepted=%d failed=%d\n", cm.ConnectsStarted, cm.ConnectsAccepted, cm.ConnectsFailed)
-	fmt.Printf("server accepts: started=%d accepted=%d failed=%d\n", sm.AcceptsStarted, sm.AcceptsAccepted, sm.AcceptsFailed)
+	fmt.Fprintln(stdout, reply)
+	fmt.Fprintf(stdout, "client connects: started=%d accepted=%d failed=%d\n", cm.ConnectsStarted, cm.ConnectsAccepted, cm.ConnectsFailed)
+	fmt.Fprintf(stdout, "server accepts: started=%d accepted=%d failed=%d\n", sm.AcceptsStarted, sm.AcceptsAccepted, sm.AcceptsFailed)
 	return nil
 }
 

@@ -44,13 +44,13 @@ type inbound struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -86,8 +86,8 @@ func run() error {
 		return fmt.Errorf("server: %w", err)
 	}
 	got := <-seen
-	fmt.Println(reply)
-	fmt.Printf("%s from %s\n", got.alpn, got.remote)
+	fmt.Fprintln(stdout, reply)
+	fmt.Fprintf(stdout, "%s from %s\n", got.alpn, got.remote)
 	return nil
 }
 

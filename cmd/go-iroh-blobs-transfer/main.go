@@ -32,6 +32,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"time"
@@ -41,7 +42,7 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		// -h is a request for the usage message, which the flag package has
 		// already printed. It is not a failure.
 		if errors.Is(err, flag.ErrHelp) {
@@ -52,7 +53,7 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("go-iroh-blobs-transfer", flag.ContinueOnError)
 	file := fs.String("file", env("IROH_EXAMPLE_FILE", ""), "file to serve instead of the built-in payload ($IROH_EXAMPLE_FILE)")
 	if err := fs.Parse(args); err != nil {
@@ -119,8 +120,8 @@ func run(args []string) error {
 		return errors.New("fetched blob does not match the served payload")
 	}
 
-	fmt.Println("bytes:", len(got))
-	fmt.Println("blake3:", hash.Short())
+	fmt.Fprintln(stdout, "bytes:", len(got))
+	fmt.Fprintln(stdout, "blake3:", hash.Short())
 	return nil
 }
 

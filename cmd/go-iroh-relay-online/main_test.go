@@ -1,10 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 // TestRun covers the offline path: without the opt-in the example names the
@@ -13,7 +12,9 @@ func TestRun(t *testing.T) {
 	if testing.Short() {
 		t.Skip("short mode")
 	}
-	out, err := exampleutil.Capture(func() error { return run([]string{"-live=false"}) })
+	var buf bytes.Buffer
+	err := run([]string{"-live=false"}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -30,10 +31,12 @@ func TestRunLive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("contacts the public relay map")
 	}
-	if !exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false) {
+	if !envBool("GO_IROH_LIVE_RELAY", false) {
 		t.Skip("set GO_IROH_LIVE_RELAY=1 to join n0's public relay map")
 	}
-	out, err := exampleutil.Capture(func() error { return run([]string{"-live"}) })
+	var buf bytes.Buffer
+	err := run([]string{"-live"}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"time"
@@ -28,13 +29,13 @@ import (
 const alpn = "go-iroh-examples/close-codes/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -79,9 +80,9 @@ func run() error {
 	if !ok {
 		return fmt.Errorf("close cause: %v", context.Cause(conn.Context()))
 	}
-	fmt.Println("remote:", appErr.Remote)
-	fmt.Println("code:", appErr.Code)
-	fmt.Println("reason:", appErr.Reason)
+	fmt.Fprintln(stdout, "remote:", appErr.Remote)
+	fmt.Fprintln(stdout, "code:", appErr.Code)
+	fmt.Fprintln(stdout, "reason:", appErr.Reason)
 	return nil
 }
 

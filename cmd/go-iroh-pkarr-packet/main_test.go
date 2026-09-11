@@ -6,13 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/key"
 	"github.com/tmc/go-iroh/pkarr"
 )
 
 func TestRun(t *testing.T) {
-	out, err := exampleutil.Capture(run)
+	var buf bytes.Buffer
+	err := run(&buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

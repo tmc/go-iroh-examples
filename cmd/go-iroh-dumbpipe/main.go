@@ -64,12 +64,12 @@ address.
 `
 
 func main() {
-	err := run(os.Args[1:])
+	err := run(os.Args[1:], os.Stdout)
 	switch {
 	case err == nil:
 	case errors.Is(err, flag.ErrHelp):
 		// The usage text was asked for, so it is the output, not an error.
-		fmt.Print(usageText)
+		fmt.Fprint(os.Stdout, usageText)
 	case errors.Is(err, errUsage):
 		os.Exit(1)
 	default:
@@ -78,9 +78,9 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return demo()
+		return demo(stdout)
 	}
 	switch args[0] {
 	case "-h", "-help", "--help":
@@ -108,7 +108,7 @@ func run(args []string) error {
 			keyPath:    *keyPath,
 			ticketPath: *ticketPath,
 			useRelay:   useRelay,
-		})
+		}, stdout)
 	case "connect":
 		fs := newFlagSet("connect")
 		alpn := fs.String("alpn", dumbpipeALPN, "ALPN to negotiate")
@@ -119,7 +119,7 @@ func run(args []string) error {
 		if fs.NArg() != 1 {
 			return usage()
 		}
-		return connect(*alpn, *bind, fs.Arg(0))
+		return connect(*alpn, *bind, fs.Arg(0), stdout)
 	default:
 		return usage()
 	}
@@ -147,7 +147,7 @@ func help(err error) error {
 }
 
 // demo runs a listener and a dialer in one process, over loopback.
-func demo() error {
+func demo(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -175,7 +175,7 @@ func demo() error {
 			done <- err
 			return
 		}
-		_, err = io.Copy(os.Stdout, stream)
+		_, err = io.Copy(stdout, stream)
 		done <- err
 	}()
 
@@ -207,7 +207,7 @@ func demo() error {
 	if err := <-done; err != nil {
 		return err
 	}
-	fmt.Println("bytes piped:", len(input))
+	fmt.Fprintln(stdout, "bytes piped:", len(input))
 	return nil
 }
 
@@ -220,7 +220,7 @@ type listenConfig struct {
 	useRelay   bool
 }
 
-func listen(cfg listenConfig) error {
+func listen(cfg listenConfig, stdout io.Writer) error {
 	ctx := context.Background()
 	bindAddr, err := netip.ParseAddrPort(cfg.bind)
 	if err != nil {
@@ -288,10 +288,10 @@ func listen(cfg listenConfig) error {
 			return err
 		}
 	}
-	return forward(os.Stdin, os.Stdout, stream)
+	return forward(os.Stdin, stdout, stream)
 }
 
-func connect(alpn, bind, ticket string) error {
+func connect(alpn, bind, ticket string, stdout io.Writer) error {
 	ctx := context.Background()
 	addr, err := endpointticket.Decode(ticket)
 	if err != nil {
@@ -332,7 +332,7 @@ func connect(alpn, bind, ticket string) error {
 			return err
 		}
 	}
-	return forward(os.Stdin, os.Stdout, stream)
+	return forward(os.Stdin, stdout, stream)
 }
 
 func online(ctx context.Context, ep *iroh.Endpoint) error {

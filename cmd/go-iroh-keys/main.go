@@ -19,19 +19,20 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/tmc/go-iroh/key"
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	seed := [key.SeedSize]byte{1, 2, 3}
 	secret := key.NewSecretKey(seed)
 	pub := secret.Public()
@@ -40,8 +41,8 @@ func run() error {
 	msg := []byte("hello go-iroh")
 	sig := secret.Sign(msg)
 
-	fmt.Println("endpoint id:", id.Short())
-	fmt.Println("z32:", id.Z32())
-	fmt.Println("signature valid:", pub.Verify(msg, sig) == nil)
+	fmt.Fprintln(stdout, "endpoint id:", id.Short())
+	fmt.Fprintln(stdout, "z32:", id.Z32())
+	fmt.Fprintln(stdout, "signature valid:", pub.Verify(msg, sig) == nil)
 	return nil
 }

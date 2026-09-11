@@ -41,13 +41,13 @@ import (
 const alpn = "go-iroh-examples/quic-surface/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
@@ -95,7 +95,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
-	fmt.Printf("bidi: %q\n", response)
+	fmt.Fprintf(stdout, "bidi: %q\n", response)
 
 	// A unidirectional stream the other way: the server pushed it before
 	// answering, which is what a server push or a control stream looks like.
@@ -107,7 +107,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("read uni: %w", err)
 	}
-	fmt.Printf("uni: %q\n", pushed)
+	fmt.Fprintf(stdout, "uni: %q\n", pushed)
 
 	// A datagram, which may be dropped and is not ordered against the streams.
 	if err := conn.SendDatagram([]byte("ping")); err != nil {
@@ -117,7 +117,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("receive datagram: %w", err)
 	}
-	fmt.Printf("datagram: %q\n", dgram)
+	fmt.Fprintf(stdout, "datagram: %q\n", dgram)
 
 	// The code is the application's, and reaches the peer as one: HTTP/3 spends
 	// this field on H3_NO_ERROR and its neighbours.
@@ -128,7 +128,7 @@ func run() error {
 	if err := <-served; err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
-	fmt.Println("closed: application code", fmt.Sprintf("%#x", h3NoError))
+	fmt.Fprintln(stdout, "closed: application code", fmt.Sprintf("%#x", h3NoError))
 	return nil
 }
 

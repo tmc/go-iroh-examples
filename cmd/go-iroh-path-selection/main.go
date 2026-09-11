@@ -28,6 +28,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"net/netip"
 	"os"
@@ -45,13 +46,13 @@ import (
 const alpn = "go-iroh-examples/path-selection/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
@@ -127,14 +128,14 @@ func run() error {
 	waitForCandidate(ctx, conn, "ip", 10*time.Second)
 
 	decisions := selector.decisions()
-	fmt.Println("selector consulted:", len(decisions) > 0)
-	fmt.Println("candidate kinds offered:", strings.Join(kinds(decisions), ","))
-	fmt.Println("policy chose relay every time:", choseOnly(decisions, "relay"))
+	fmt.Fprintln(stdout, "selector consulted:", len(decisions) > 0)
+	fmt.Fprintln(stdout, "candidate kinds offered:", strings.Join(kinds(decisions), ","))
+	fmt.Fprintln(stdout, "policy chose relay every time:", choseOnly(decisions, "relay"))
 	for _, d := range distinct(decisions) {
-		fmt.Printf("select: candidates=[%s] relayFirst=%s default=%s\n",
+		fmt.Fprintf(stdout, "select: candidates=[%s] relayFirst=%s default=%s\n",
 			strings.Join(d.candidates, " "), d.chose, d.byDefault)
 	}
-	fmt.Println("selected path kind:", selectedPathKind(conn.Paths()))
+	fmt.Fprintln(stdout, "selected path kind:", selectedPathKind(conn.Paths()))
 	return nil
 }
 

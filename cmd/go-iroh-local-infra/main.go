@@ -38,13 +38,13 @@ import (
 const alpn = "go-iroh-examples/local-infra/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -64,8 +64,8 @@ func run() error {
 	}
 	mode := relay.ModeCustomURLs(relayURL)
 	pkarrURL := dnsHTTP.URL + "/pkarr"
-	fmt.Println("relay:", relayURL)
-	fmt.Println("pkarr:", pkarrURL)
+	fmt.Fprintln(stdout, "relay:", relayURL)
+	fmt.Fprintln(stdout, "pkarr:", pkarrURL)
 
 	// The server publishes its own address to the local pkarr relay. The
 	// default AddrFilter publishes relay addresses only, which is what a real
@@ -146,7 +146,7 @@ func run() error {
 	// received an ID out of band would retry. Connect resolves the ID itself
 	// through the same lookup, but it asks once — a dial before the relay has
 	// the record fails with [iroh.ErrNoAddress] rather than waiting for it.
-	if err := waitPublished(ctx, resolver, server.ID()); err != nil {
+	if err := waitPublished(ctx, resolver, server.ID(), stdout); err != nil {
 		return err
 	}
 
@@ -163,8 +163,8 @@ func run() error {
 	if err := <-accepted; err != nil {
 		return err
 	}
-	fmt.Println("reply:", reply)
-	fmt.Println("path:", selectedPathKind(conn.Paths()))
+	fmt.Fprintln(stdout, "reply:", reply)
+	fmt.Fprintln(stdout, "path:", selectedPathKind(conn.Paths()))
 
 	// Both servers implement the metrics source interface, so a deployment can
 	// scrape them through one registry.
@@ -178,19 +178,19 @@ func run() error {
 	if err := reg.WriteOpenMetrics(io.Discard); err != nil {
 		return err
 	}
-	fmt.Println("dns snapshot:", dnsSrv.Snapshot())
-	fmt.Println("relay snapshot:", relaySrv.Snapshot())
+	fmt.Fprintln(stdout, "dns snapshot:", dnsSrv.Snapshot())
+	fmt.Fprintln(stdout, "relay snapshot:", relaySrv.Snapshot())
 	return nil
 }
 
 // waitPublished polls the pkarr relay until it has a record for id.
-func waitPublished(ctx context.Context, r *iroh.PkarrResolver, id key.EndpointID) error {
+func waitPublished(ctx context.Context, r *iroh.PkarrResolver, id key.EndpointID, stdout io.Writer) error {
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		for item, err := range r.Resolve(ctx, id) {
 			if err == nil && item.EndpointID().Equal(id) {
-				fmt.Println("resolved by id:", len(item.Addr().Addrs()), "address(es)")
+				fmt.Fprintln(stdout, "resolved by id:", len(item.Addr().Addrs()), "address(es)")
 				return nil
 			}
 		}

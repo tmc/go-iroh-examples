@@ -76,12 +76,12 @@ the listener.
 `
 
 func main() {
-	err := run(os.Args[1:])
+	err := run(os.Args[1:], os.Stdout)
 	switch {
 	case err == nil:
 	case errors.Is(err, flag.ErrHelp):
 		// The usage text was asked for, so it is the output, not an error.
-		fmt.Print(usageText)
+		fmt.Fprint(os.Stdout, usageText)
 	case errors.Is(err, errUsage):
 		os.Exit(1)
 	default:
@@ -90,7 +90,7 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return usage()
 	}
@@ -109,7 +109,7 @@ func run(args []string) error {
 		if fs.NArg() != 0 {
 			return usage()
 		}
-		return listen(*port, *alpn, *serve, *live)
+		return listen(*port, *alpn, *serve, *live, stdout)
 	case "connect":
 		fs := flag.NewFlagSet("connect", flag.ContinueOnError)
 		peerID := fs.String("peer-id", env("IROH_EXAMPLE_PEER_ID", ""), "endpoint id of the peer to dial, z32 or hex ($IROH_EXAMPLE_PEER_ID)")
@@ -122,7 +122,7 @@ func run(args []string) error {
 		if fs.NArg() != 0 {
 			return usage()
 		}
-		return connect(*peerID, *peerIP, *peerRelay, *alpn)
+		return connect(*peerID, *peerIP, *peerRelay, *alpn, stdout)
 	default:
 		return usage()
 	}
@@ -142,7 +142,7 @@ func help(err error) error {
 	return usage()
 }
 
-func listen(port uint, alpn string, serve, live bool) error {
+func listen(port uint, alpn string, serve, live bool, stdout io.Writer) error {
 	if port > 65535 {
 		return fmt.Errorf("port %d out of range", port)
 	}
@@ -173,14 +173,14 @@ func listen(port uint, alpn string, serve, live bool) error {
 		}
 	}
 
-	fmt.Println("endpoint id:", ep.ID().Z32())
-	fmt.Println("alpn:", alpn)
-	fmt.Println("direct paths:", ep.Addr().IPAddrs())
-	fmt.Println("relay paths:", ep.Addr().RelayURLs())
-	fmt.Println("local udp:", ep.LocalAddr())
+	fmt.Fprintln(stdout, "endpoint id:", ep.ID().Z32())
+	fmt.Fprintln(stdout, "alpn:", alpn)
+	fmt.Fprintln(stdout, "direct paths:", ep.Addr().IPAddrs())
+	fmt.Fprintln(stdout, "relay paths:", ep.Addr().RelayURLs())
+	fmt.Fprintln(stdout, "local udp:", ep.LocalAddr())
 
 	if !serve {
-		fmt.Println("pass -serve or set IROH_EXAMPLE_SERVE=1 to keep serving echo connections")
+		fmt.Fprintln(stdout, "pass -serve or set IROH_EXAMPLE_SERVE=1 to keep serving echo connections")
 		return nil
 	}
 	for {
@@ -194,9 +194,9 @@ func listen(port uint, alpn string, serve, live bool) error {
 	}
 }
 
-func connect(peerID, peerIP, peerRelay, alpn string) error {
+func connect(peerID, peerIP, peerRelay, alpn string, stdout io.Writer) error {
 	if peerID == "" || (peerIP == "" && peerRelay == "") {
-		fmt.Println("pass -peer-id and -peer-ip or -peer-relay (or set IROH_EXAMPLE_PEER_ID, IROH_EXAMPLE_PEER_IP, IROH_EXAMPLE_PEER_RELAY)")
+		fmt.Fprintln(stdout, "pass -peer-id and -peer-ip or -peer-relay (or set IROH_EXAMPLE_PEER_ID, IROH_EXAMPLE_PEER_IP, IROH_EXAMPLE_PEER_RELAY)")
 		return nil
 	}
 
@@ -245,8 +245,8 @@ func connect(peerID, peerIP, peerRelay, alpn string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(reply)
-	fmt.Println("remote:", conn.RemoteID().Short())
+	fmt.Fprintln(stdout, reply)
+	fmt.Fprintln(stdout, "remote:", conn.RemoteID().Short())
 	return nil
 }
 

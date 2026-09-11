@@ -44,6 +44,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -64,7 +65,7 @@ var (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		// -h is a request for the usage message, which the flag package has
 		// already printed. It is not a failure.
 		if errors.Is(err, flag.ErrHelp) {
@@ -75,7 +76,7 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("go-iroh-blobs-store", flag.ContinueOnError)
 	dir := fs.String("dir", env("IROH_EXAMPLE_DIR", ""), "store directory, default a temporary one removed on exit ($IROH_EXAMPLE_DIR)")
 	if err := fs.Parse(args); err != nil {
@@ -95,22 +96,22 @@ func run(args []string) error {
 		storeDir = tmp
 	}
 
-	if err := write(ctx, storeDir); err != nil {
+	if err := write(ctx, storeDir, stdout); err != nil {
 		return err
 	}
-	store, err := reopen(ctx, storeDir)
+	store, err := reopen(ctx, storeDir, stdout)
 	if err != nil {
 		return err
 	}
-	if err := download(ctx, store, storeDir); err != nil {
+	if err := download(ctx, store, storeDir, stdout); err != nil {
 		return err
 	}
-	return collect(ctx, store)
+	return collect(ctx, store, stdout)
 }
 
 // write stores the two local blobs in a fresh store and tags one of them, then
 // returns, leaving the store behind on disk.
-func write(ctx context.Context, dir string) error {
+func write(ctx context.Context, dir string, stdout io.Writer) error {
 	store, err := blobs.NewFSStore(dir)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
@@ -143,13 +144,13 @@ func write(ctx context.Context, dir string) error {
 		return fmt.Errorf("add blob: %w", err)
 	}
 
-	fmt.Println("stored:", tag.Hash().Short())
+	fmt.Fprintln(stdout, "stored:", tag.Hash().Short())
 	return nil
 }
 
 // reopen opens the same directory again in a store that shares nothing with the
 // one write used, and reads the tagged blob back out of it.
-func reopen(ctx context.Context, dir string) (*blobs.FSStore, error) {
+func reopen(ctx context.Context, dir string, stdout io.Writer) (*blobs.FSStore, error) {
 	store, err := blobs.NewFSStore(dir)
 	if err != nil {
 		return nil, fmt.Errorf("reopen store: %w", err)
@@ -168,12 +169,12 @@ func reopen(ctx context.Context, dir string) (*blobs.FSStore, error) {
 	if !bytes.Equal(data, keepData) {
 		return nil, errors.New("reopened blob does not match what was stored")
 	}
-	fmt.Println("reopened:", value.Hash.Short(), "still tagged keep")
+	fmt.Fprintln(stdout, "reopened:", value.Hash.Short(), "still tagged keep")
 	return store, nil
 }
 
 // download fetches remoteData into store, racing two providers that hold it.
-func download(ctx context.Context, store *blobs.FSStore, dir string) error {
+func download(ctx context.Context, store *blobs.FSStore, dir string, stdout io.Writer) error {
 	hash := blobs.NewHash(remoteData)
 
 	// Two providers serving the same content. Neither is trusted: the hash the
@@ -238,14 +239,14 @@ func download(ctx context.Context, store *blobs.FSStore, dir string) error {
 	if tried == 0 || completed == 0 {
 		return errors.New("downloader reported no provider attempt")
 	}
-	fmt.Println("providers offered:", len(providers))
-	fmt.Println("downloaded:", tag.Hash().Short())
+	fmt.Fprintln(stdout, "providers offered:", len(providers))
+	fmt.Fprintln(stdout, "downloaded:", tag.Hash().Short())
 
 	return nil
 }
 
 // collect runs a garbage collection sweep and reports what it reclaimed.
-func collect(ctx context.Context, store *blobs.FSStore) error {
+func collect(ctx context.Context, store *blobs.FSStore, stdout io.Writer) error {
 	scratch := blobs.NewHash(scratchData)
 	var deleted []blobs.Hash
 	result, err := store.GCWithEvents(ctx, func(ev blobs.GCEvent) {
@@ -256,16 +257,16 @@ func collect(ctx context.Context, store *blobs.FSStore) error {
 	if err != nil {
 		return fmt.Errorf("gc: %w", err)
 	}
-	fmt.Println("gc deleted:", result.Deleted)
+	fmt.Fprintln(stdout, "gc deleted:", result.Deleted)
 	for _, hash := range deleted {
-		fmt.Println("gc reclaimed:", hash.Short())
+		fmt.Fprintln(stdout, "gc reclaimed:", hash.Short())
 	}
 
 	status, err := blobs.Status(ctx, store, scratch)
 	if err != nil {
 		return fmt.Errorf("status: %w", err)
 	}
-	fmt.Println("untagged blob present:", status.State != blobs.BlobNotFound)
+	fmt.Fprintln(stdout, "untagged blob present:", status.State != blobs.BlobNotFound)
 
 	tags, err := store.Tags()
 	if err != nil {
@@ -276,7 +277,7 @@ func collect(ctx context.Context, store *blobs.FSStore) error {
 		if err != nil {
 			return fmt.Errorf("status: %w", err)
 		}
-		fmt.Printf("tag %s: %s present=%v\n", tag.Name, tag.Value.Hash.Short(), status.State != blobs.BlobNotFound)
+		fmt.Fprintf(stdout, "tag %s: %s present=%v\n", tag.Name, tag.Value.Hash.Short(), status.State != blobs.BlobNotFound)
 	}
 	return nil
 }

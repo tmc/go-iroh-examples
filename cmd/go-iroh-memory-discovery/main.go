@@ -34,13 +34,13 @@ import (
 const alpn = "go-iroh-examples/memory-discovery/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -76,7 +76,7 @@ func run() error {
 
 	// Everything the client knows about the server. Connect finds the rest.
 	addr := netaddr.NewEndpointAddr(server.ID())
-	fmt.Println("addresses given to Connect:", len(addr.Addrs()))
+	fmt.Fprintln(stdout, "addresses given to Connect:", len(addr.Addrs()))
 
 	conn, err := client.Connect(ctx, addr, alpn)
 	if err != nil {
@@ -88,7 +88,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(reply)
+	fmt.Fprintln(stdout, reply)
 	return nil
 }
 

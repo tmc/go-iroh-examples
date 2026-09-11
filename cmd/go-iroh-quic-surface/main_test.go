@@ -1,19 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/iroh"
 	"github.com/tmc/go-iroh/quicconn"
 )
 
 func TestRun(t *testing.T) {
-	out, err := exampleutil.Capture(run)
+	var buf bytes.Buffer
+	err := run(&buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

@@ -62,13 +62,13 @@ func (h *hookLog) AfterHandshake(_ context.Context, conn *iroh.Conn) error {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -108,9 +108,9 @@ func run() error {
 	if err := <-served; err != nil {
 		return fmt.Errorf("server: %w", err)
 	}
-	fmt.Println(reply)
-	fmt.Println("before:", hooks.before)
-	fmt.Println("after:", hooks.after)
+	fmt.Fprintln(stdout, reply)
+	fmt.Fprintln(stdout, "before:", hooks.before)
+	fmt.Fprintln(stdout, "after:", hooks.after)
 	return nil
 }
 

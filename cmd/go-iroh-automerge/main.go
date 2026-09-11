@@ -48,13 +48,13 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -99,7 +99,7 @@ func run() error {
 
 	select {
 	case doc := <-synced:
-		return printState(doc)
+		return printState(doc, stdout)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -218,19 +218,19 @@ func receiveSyncMessage(r io.Reader, state *automerge.SyncState) (done bool, err
 }
 
 // printState prints doc's root map in key order.
-func printState(doc *automerge.Doc) error {
+func printState(doc *automerge.Doc, stdout io.Writer) error {
 	keys, err := doc.RootMap().Keys()
 	if err != nil {
 		return fmt.Errorf("read keys: %w", err)
 	}
 	sort.Strings(keys)
-	fmt.Println("State")
+	fmt.Fprintln(stdout, "State")
 	for _, key := range keys {
 		value, err := automerge.As[string](doc.RootMap().Get(key))
 		if err != nil {
 			return fmt.Errorf("read %s: %w", key, err)
 		}
-		fmt.Printf("%s => %q\n", key, value)
+		fmt.Fprintf(stdout, "%s => %q\n", key, value)
 	}
 	return nil
 }

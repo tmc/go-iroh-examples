@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"net/netip"
 	"os"
@@ -31,13 +32,13 @@ import (
 const alpn = "go-iroh-examples/path-upgrade/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
@@ -104,14 +105,14 @@ func run() error {
 	if !ok {
 		return fmt.Errorf("path watch closed before initial snapshot")
 	}
-	fmt.Println("initial selected:", selectedPathKind(initial))
+	fmt.Fprintln(stdout, "initial selected:", selectedPathKind(initial))
 
 	server.AddExternalAddr(server.LocalAddr())
 	client.AddExternalAddr(client.LocalAddr())
 
 	upgraded := waitForDirect(ctx, watch, 20*time.Second)
-	fmt.Println("direct upgrade observed:", upgraded)
-	fmt.Println("current selected:", selectedPathKind(conn.Paths()))
+	fmt.Fprintln(stdout, "direct upgrade observed:", upgraded)
+	fmt.Fprintln(stdout, "current selected:", selectedPathKind(conn.Paths()))
 	return nil
 }
 

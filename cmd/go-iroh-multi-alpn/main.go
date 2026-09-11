@@ -37,13 +37,13 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -91,8 +91,8 @@ func run() error {
 		return err
 	}
 
-	fmt.Println("echo:", echoReply)
-	fmt.Println("upper:", upperReply)
+	fmt.Fprintln(stdout, "echo:", echoReply)
+	fmt.Fprintln(stdout, "upper:", upperReply)
 	return nil
 }
 

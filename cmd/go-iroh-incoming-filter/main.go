@@ -36,13 +36,13 @@ import (
 const alpn = "go-iroh-examples/incoming-filter/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -60,12 +60,12 @@ func run() error {
 		if open.Load() {
 			return iroh.FilterAccept
 		}
-		fmt.Printf("filter: rejecting %s (server closed for maintenance)\n", in.RemoteAddr())
+		fmt.Fprintf(stdout, "filter: rejecting %s (server closed for maintenance)\n", in.RemoteAddr())
 		return iroh.FilterReject
 	}
 
 	router, err := iroh.NewRouter(server, map[string]iroh.ProtocolHandler{
-		alpn: &loggingEchoHandler{},
+		alpn: &loggingEchoHandler{stdout},
 	}, &iroh.RouterConfig{IncomingFilter: filter})
 	if err != nil {
 		return err
@@ -89,7 +89,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("first client reply:", reply)
+	fmt.Fprintln(stdout, "first client reply:", reply)
 	conn.CloseWithError(0, "")
 
 	// Close the gate; further connections are refused by the filter. A filtered
@@ -99,14 +99,14 @@ func run() error {
 
 	second, err := client.Connect(ctx, addr, alpn)
 	if err != nil {
-		fmt.Println("second client refused at connect:", err)
+		fmt.Fprintln(stdout, "second client refused at connect:", err)
 		return nil
 	}
 	defer second.CloseWithError(0, "")
 	if _, err := exchange(ctx, second, "after maintenance"); err != nil {
-		fmt.Println("second client refused:", err)
+		fmt.Fprintln(stdout, "second client refused:", err)
 	} else {
-		fmt.Println("second client unexpectedly admitted")
+		fmt.Fprintln(stdout, "second client unexpectedly admitted")
 	}
 	return nil
 }

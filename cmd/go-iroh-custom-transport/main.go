@@ -161,13 +161,13 @@ func (p *port) LocalCustomAddrs(context.Context) ([]netaddr.CustomAddr, error) {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -209,17 +209,17 @@ func run() error {
 	// reach the server through a transport with the same id.
 	addr := server.Addr()
 	for _, a := range addr.Addrs() {
-		fmt.Println("advertised:", a.Network(), a.String())
+		fmt.Fprintln(stdout, "advertised:", a.Network(), a.String())
 	}
-	fmt.Println("advertised ip addresses:", len(addr.IPAddrs()))
+	fmt.Fprintln(stdout, "advertised ip addresses:", len(addr.IPAddrs()))
 
 	conn, err := client.Connect(ctx, addr, alpn)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
 	defer conn.CloseWithError(0, "")
-	fmt.Println("handshake reached the server:", conn.RemoteID() == server.ID())
-	fmt.Println("path kind:", selectedPathKind(conn.Paths()))
+	fmt.Fprintln(stdout, "handshake reached the server:", conn.RemoteID() == server.ID())
+	fmt.Fprintln(stdout, "path kind:", selectedPathKind(conn.Paths()))
 
 	// The handshake already crossed the bus; the counters below prove the
 	// application data does too. Exact packet counts depend on QUIC's pacing,
@@ -229,10 +229,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("reply:", reply)
-	fmt.Println("bus carried client to server:", b.count("server") > toServer)
-	fmt.Println("bus carried server to client:", b.count("client") > toClient)
-	fmt.Println("bus dropped:", b.dropped.Load())
+	fmt.Fprintln(stdout, "reply:", reply)
+	fmt.Fprintln(stdout, "bus carried client to server:", b.count("server") > toServer)
+	fmt.Fprintln(stdout, "bus carried server to client:", b.count("client") > toClient)
+	fmt.Fprintln(stdout, "bus dropped:", b.dropped.Load())
 	return nil
 }
 

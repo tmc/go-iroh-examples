@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"strings"
 	"testing"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 // TestRunDemo covers the no-argument path: both halves of the pipe in one
 // process over loopback.
 func TestRunDemo(t *testing.T) {
-	out, err := exampleutil.Capture(func() error { return run(nil) })
+	var buf bytes.Buffer
+	err := run(nil, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -33,8 +35,8 @@ func TestRunUsage(t *testing.T) {
 		{"connect", "one", "two"},   // too many arguments
 		{"listen", "-no-such-flag"}, // unknown flag
 	} {
-		if err := run(args); err != errUsage {
-			t.Errorf("run(%q) = %v, want errUsage", args, err)
+		if err := run(args, io.Discard); err != errUsage {
+			t.Errorf("run(%q, io.Discard) = %v, want errUsage", args, err)
 		}
 	}
 }

@@ -56,13 +56,13 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -90,10 +90,10 @@ func run() error {
 			return fmt.Errorf("%s: %w", c.name, err)
 		}
 		if alpn == "" {
-			fmt.Printf("%s: no version in common with the server\n", c.name)
+			fmt.Fprintf(stdout, "%s: no version in common with the server\n", c.name)
 			continue
 		}
-		fmt.Printf("%s: negotiated %s, reply %q\n", c.name, version(alpn), reply)
+		fmt.Fprintf(stdout, "%s: negotiated %s, reply %q\n", c.name, version(alpn), reply)
 	}
 	return nil
 }

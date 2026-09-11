@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
 
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 	"github.com/tmc/go-iroh/blobs"
 )
 
@@ -15,7 +15,9 @@ import (
 // is on disk when the process is gone.
 func TestRun(t *testing.T) {
 	dir := t.TempDir()
-	out, err := exampleutil.Capture(func() error { return run([]string{"-dir=" + dir}) })
+	var buf bytes.Buffer
+	err := run([]string{"-dir=" + dir}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

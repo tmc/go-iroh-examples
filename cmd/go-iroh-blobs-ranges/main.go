@@ -32,6 +32,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"time"
@@ -42,13 +43,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -93,9 +94,9 @@ func run() error {
 		return errors.New("resumed blob does not match the served payload")
 	}
 
-	fmt.Println("bytes:", len(got))
-	fmt.Println("blake3:", hash.Short())
-	fmt.Println("ranges: prefix + resumed suffix")
+	fmt.Fprintln(stdout, "bytes:", len(got))
+	fmt.Fprintln(stdout, "blake3:", hash.Short())
+	fmt.Fprintln(stdout, "ranges: prefix + resumed suffix")
 	return nil
 }
 

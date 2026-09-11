@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"flag"
+	"io"
 	"strings"
 	"testing"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 // TestListen runs the self-contained half of the listener: bind, print the
@@ -16,9 +16,9 @@ func TestListen(t *testing.T) {
 	if testing.Short() {
 		t.Skip("binds a UDP socket")
 	}
-	out, err := exampleutil.Capture(func() error {
-		return run([]string{"listen", "-port=0", "-alpn=" + defaultALPN, "-serve=false", "-live=false"})
-	})
+	var buf bytes.Buffer
+	err := run([]string{"listen", "-port=0", "-alpn=" + defaultALPN, "-serve=false", "-live=false"}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -43,12 +43,12 @@ func TestListenLive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("contacts the public relay map")
 	}
-	if !exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false) {
+	if !envBool("GO_IROH_LIVE_RELAY", false) {
 		t.Skip("set GO_IROH_LIVE_RELAY=1 to dial n0's public relays")
 	}
-	out, err := exampleutil.Capture(func() error {
-		return run([]string{"listen", "-port=0", "-serve=false", "-live"})
-	})
+	var buf bytes.Buffer
+	err := run([]string{"listen", "-port=0", "-serve=false", "-live"}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -67,9 +67,9 @@ func TestConnect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("short mode")
 	}
-	out, err := exampleutil.Capture(func() error {
-		return run([]string{"connect", "-peer-id=", "-peer-ip=", "-peer-relay="})
-	})
+	var buf bytes.Buffer
+	err := run([]string{"connect", "-peer-id=", "-peer-ip=", "-peer-relay="}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -86,13 +86,15 @@ func TestConnectLive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("dials a remote peer")
 	}
-	id := exampleutil.Env("IROH_EXAMPLE_PEER_ID", "")
-	ip := exampleutil.Env("IROH_EXAMPLE_PEER_IP", "")
-	relayURL := exampleutil.Env("IROH_EXAMPLE_PEER_RELAY", "")
+	id := env("IROH_EXAMPLE_PEER_ID", "")
+	ip := env("IROH_EXAMPLE_PEER_IP", "")
+	relayURL := env("IROH_EXAMPLE_PEER_RELAY", "")
 	if id == "" || (ip == "" && relayURL == "") {
 		t.Skip("set IROH_EXAMPLE_PEER_ID and IROH_EXAMPLE_PEER_IP or IROH_EXAMPLE_PEER_RELAY to dial a live peer")
 	}
-	out, err := exampleutil.Capture(func() error { return run([]string{"connect"}) })
+	var buf bytes.Buffer
+	err := run([]string{"connect"}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -117,8 +119,8 @@ func TestRunUsage(t *testing.T) {
 		{"listen", "-no-such-flag"},
 		{"connect", "stray-argument"},
 	} {
-		if err := run(args); err != errUsage {
-			t.Errorf("run(%q) = %v, want errUsage", args, err)
+		if err := run(args, io.Discard); err != errUsage {
+			t.Errorf("run(%q, io.Discard) = %v, want errUsage", args, err)
 		}
 	}
 }
@@ -126,12 +128,12 @@ func TestRunUsage(t *testing.T) {
 // TestRunHelp checks that -h is answered with the usage text rather than
 // treated as a failure.
 func TestRunHelp(t *testing.T) {
-	if err := run([]string{"-h"}); err != flag.ErrHelp {
-		t.Errorf("run(-h) = %v, want flag.ErrHelp", err)
+	if err := run([]string{"-h"}, io.Discard); err != flag.ErrHelp {
+		t.Errorf("run(-h, io.Discard) = %v, want flag.ErrHelp", err)
 	}
 	for _, sub := range []string{"listen", "connect"} {
-		if err := run([]string{sub, "-h"}); err != flag.ErrHelp {
-			t.Errorf("run(%s -h) = %v, want flag.ErrHelp", sub, err)
+		if err := run([]string{sub, "-h"}, io.Discard); err != flag.ErrHelp {
+			t.Errorf("run(%s -h, io.Discard) = %v, want flag.ErrHelp", sub, err)
 		}
 	}
 }

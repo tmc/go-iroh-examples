@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 
@@ -26,13 +27,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	secret, err := key.GenerateSecretKey()
 	if err != nil {
 		return err
@@ -47,11 +48,11 @@ func run() error {
 		WithIP(netip.MustParseAddrPort("[::1]:4433")).
 		WithRelayURL(relayURL)
 
-	fmt.Println("endpoint:", addr.ID.Short())
-	fmt.Println("direct paths:", len(addr.IPAddrs()))
-	fmt.Println("relay paths:", len(addr.RelayURLs()))
+	fmt.Fprintln(stdout, "endpoint:", addr.ID.Short())
+	fmt.Fprintln(stdout, "direct paths:", len(addr.IPAddrs()))
+	fmt.Fprintln(stdout, "relay paths:", len(addr.RelayURLs()))
 	for _, a := range addr.Addrs() {
-		fmt.Println(a)
+		fmt.Fprintln(stdout, a)
 	}
 	return nil
 }

@@ -44,13 +44,13 @@ type envelope struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -70,15 +70,15 @@ func run() error {
 	// This is the string a peer would be sent. It starts with "endpoint" and is
 	// lowercase base32, so it survives a paste anywhere.
 	ticket := endpointticket.Encode(server.Addr())
-	fmt.Println("ticket prefix:", strings.HasPrefix(ticket, endpointticket.Kind))
+	fmt.Fprintln(stdout, "ticket prefix:", strings.HasPrefix(ticket, endpointticket.Kind))
 
 	// The receiving side knows only the string.
 	addr, err := endpointticket.Decode(ticket)
 	if err != nil {
 		return err
 	}
-	fmt.Println("same endpoint:", addr.ID == server.ID())
-	fmt.Println("addresses:", len(addr.Addrs()))
+	fmt.Fprintln(stdout, "same endpoint:", addr.ID == server.ID())
+	fmt.Fprintln(stdout, "addresses:", len(addr.Addrs()))
 
 	client, err := bind(ctx)
 	if err != nil {
@@ -96,7 +96,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("reply:", reply)
+	fmt.Fprintln(stdout, "reply:", reply)
 
 	// An application with its own fields to carry wraps the ticket instead of
 	// replacing it, so the address stays in the one format every iroh
@@ -109,9 +109,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("room:", room)
-	fmt.Println("query:", query)
-	fmt.Println("envelope round trip:", unwrapped == ticket)
+	fmt.Fprintln(stdout, "room:", room)
+	fmt.Fprintln(stdout, "query:", query)
+	fmt.Fprintln(stdout, "envelope round trip:", unwrapped == ticket)
 	return nil
 }
 

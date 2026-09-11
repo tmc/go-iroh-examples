@@ -25,6 +25,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -34,7 +35,7 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		// -h is a request for the usage message, which the flag package has
 		// already printed. It is not a failure.
 		if errors.Is(err, flag.ErrHelp) {
@@ -45,7 +46,7 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("go-iroh-dns-resolve", flag.ContinueOnError)
 	rawID := fs.String("endpoint-id", env("IROH_EXAMPLE_ENDPOINT_ID", ""), "published endpoint id to resolve, z32 or hex ($IROH_EXAMPLE_ENDPOINT_ID)")
 	origin := fs.String("dns-origin", env("IROH_EXAMPLE_DNS_ORIGIN", dns.N0DNSEndpointOriginProd), "discovery origin to query ($IROH_EXAMPLE_DNS_ORIGIN)")
@@ -53,7 +54,7 @@ func run(args []string) error {
 		return err
 	}
 	if *rawID == "" {
-		fmt.Println("pass -endpoint-id or set IROH_EXAMPLE_ENDPOINT_ID to a published endpoint id")
+		fmt.Fprintln(stdout, "pass -endpoint-id or set IROH_EXAMPLE_ENDPOINT_ID to a published endpoint id")
 		return nil
 	}
 
@@ -71,13 +72,13 @@ func run(args []string) error {
 			return fmt.Errorf("resolve endpoint %s: %w", id, err)
 		}
 		addr := item.Addr()
-		fmt.Println("provenance:", item.Provenance())
-		fmt.Println("endpoint:", addr.ID.Z32())
-		fmt.Println("direct paths:", addr.IPAddrs())
-		fmt.Println("relay paths:", addr.RelayURLs())
+		fmt.Fprintln(stdout, "provenance:", item.Provenance())
+		fmt.Fprintln(stdout, "endpoint:", addr.ID.Z32())
+		fmt.Fprintln(stdout, "direct paths:", addr.IPAddrs())
+		fmt.Fprintln(stdout, "relay paths:", addr.RelayURLs())
 		return nil
 	}
-	fmt.Println("no DNS endpoint records found")
+	fmt.Fprintln(stdout, "no DNS endpoint records found")
 	return nil
 }
 

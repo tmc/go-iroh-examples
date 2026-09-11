@@ -39,13 +39,13 @@ type telemetryResult struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -89,7 +89,7 @@ func run() error {
 		return result.err
 	}
 	for _, event := range result.events {
-		fmt.Printf("event %d: %s=%d\n", event.Seq, event.Metric, event.Value)
+		fmt.Fprintf(stdout, "event %d: %s=%d\n", event.Seq, event.Metric, event.Value)
 	}
 	return nil
 }

@@ -37,13 +37,13 @@ import (
 const alpn = "go-iroh-examples/source-validation/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -87,9 +87,9 @@ func run() error {
 	if err := <-served; err != nil {
 		return fmt.Errorf("server: %w", err)
 	}
-	fmt.Println(reply)
-	fmt.Println("remote address validated:", <-validated)
-	fmt.Println("retry checks:", retryChecks.Load())
+	fmt.Fprintln(stdout, reply)
+	fmt.Fprintln(stdout, "remote address validated:", <-validated)
+	fmt.Fprintln(stdout, "retry checks:", retryChecks.Load())
 	return nil
 }
 

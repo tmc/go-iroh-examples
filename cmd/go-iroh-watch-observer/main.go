@@ -31,28 +31,28 @@ import (
 const alpn = "go-iroh-examples/watch-observer/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := watchValue(ctx); err != nil {
+	if err := watchValue(ctx, stdout); err != nil {
 		return err
 	}
-	return watchEndpointAddr(ctx)
+	return watchEndpointAddr(ctx, stdout)
 }
 
 // watchValue exercises the three observer shapes on a bare [watch.Value],
 // with no endpoint involved.
-func watchValue(ctx context.Context) error {
+func watchValue(ctx context.Context, stdout io.Writer) error {
 	value := watch.NewValue("starting")
 	obs := value.Watch()
-	fmt.Println("current:", obs.Current())
+	fmt.Fprintln(stdout, "current:", obs.Current())
 
 	updated := make(chan error, 1)
 	go func() {
@@ -61,7 +61,7 @@ func watchValue(ctx context.Context) error {
 			updated <- err
 			return
 		}
-		fmt.Println("updated:", next)
+		fmt.Fprintln(stdout, "updated:", next)
 		updated <- nil
 	}()
 	value.Set("ready")
@@ -76,7 +76,7 @@ func watchValue(ctx context.Context) error {
 	defer stopStream()
 	seen := 0
 	for n := range unique.Watch().Stream(streamCtx) {
-		fmt.Println("stream:", n)
+		fmt.Fprintln(stdout, "stream:", n)
 		seen++
 		if seen == 3 {
 			break
@@ -94,7 +94,7 @@ func watchValue(ctx context.Context) error {
 
 // watchEndpointAddr runs the same three shapes against an endpoint's own
 // address, which changes as external addresses are learned.
-func watchEndpointAddr(ctx context.Context) error {
+func watchEndpointAddr(ctx context.Context, stdout io.Writer) error {
 	ep, err := bind(ctx, iroh.WithALPNs(alpn))
 	if err != nil {
 		return err
@@ -104,12 +104,12 @@ func watchEndpointAddr(ctx context.Context) error {
 
 	obs := ep.WatchAddr()
 	current := obs.Current()
-	fmt.Println("current addrs:", len(current.IPAddrs()))
+	fmt.Fprintln(stdout, "current addrs:", len(current.IPAddrs()))
 	reply, err := dial(ctx, current, "first")
 	if err != nil {
 		return err
 	}
-	fmt.Println("first reply:", reply)
+	fmt.Fprintln(stdout, "first reply:", reply)
 
 	updated := make(chan error, 1)
 	go func() {
@@ -124,7 +124,7 @@ func watchEndpointAddr(ctx context.Context) error {
 				return
 			}
 			if containsAddr(addr.IPAddrs(), externalAddr()) {
-				fmt.Println("updated has external:", true)
+				fmt.Fprintln(stdout, "updated has external:", true)
 				updated <- nil
 				return
 			}
@@ -139,13 +139,13 @@ func watchEndpointAddr(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("second reply:", reply)
+	fmt.Fprintln(stdout, "second reply:", reply)
 
 	streamCtx, stopStream := context.WithCancel(ctx)
 	defer stopStream()
 	seen := 0
 	for addr := range ep.WatchAddr().Stream(streamCtx) {
-		fmt.Println("stream addrs:", len(addr.IPAddrs()))
+		fmt.Fprintln(stdout, "stream addrs:", len(addr.IPAddrs()))
 		seen++
 		if seen == 2 {
 			break

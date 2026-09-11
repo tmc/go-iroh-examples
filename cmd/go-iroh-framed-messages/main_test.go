@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"strings"
+	"sync"
 	"testing"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 func TestRun(t *testing.T) {
-	out, err := exampleutil.Capture(run)
+	var buf lockedBuffer
+	err := run(&buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -60,4 +61,24 @@ func TestFrame(t *testing.T) {
 	if err := writeFrame(&buf, make([]byte, maxMessageSize+1)); err == nil {
 		t.Error("writeFrame accepted a payload over maxMessageSize")
 	}
+}
+
+// lockedBuffer is a [bytes.Buffer] that may be written from several goroutines
+// at once. run prints from the protocol handler as well as from the dialing
+// side, so the writer it is handed has to tolerate what os.Stdout does.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

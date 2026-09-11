@@ -17,6 +17,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -34,7 +35,7 @@ import (
 const alpn = "go-iroh-examples/doctor/1"
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		// -h is a request for the usage message, which the flag package has
 		// already printed. It is not a failure.
 		if errors.Is(err, flag.ErrHelp) {
@@ -45,7 +46,7 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("go-iroh-doctor", flag.ContinueOnError)
 	live := fs.Bool("live", envBool("GO_IROH_LIVE_RELAY", false),
 		"diagnose against n0's public relays instead of an in-process one ($GO_IROH_LIVE_RELAY)")
@@ -61,9 +62,9 @@ func run(args []string) error {
 		return err
 	}
 	defer cleanup()
-	fmt.Println("live relay:", *live)
+	fmt.Fprintln(stdout, "live relay:", *live)
 	if !*live {
-		fmt.Println("pass -live or set GO_IROH_LIVE_RELAY=1 to diagnose against public relays")
+		fmt.Fprintln(stdout, "pass -live or set GO_IROH_LIVE_RELAY=1 to diagnose against public relays")
 	}
 
 	server, err := iroh.Bind(ctx,
@@ -80,20 +81,20 @@ func run(args []string) error {
 		return fmt.Errorf("server online: %w", err)
 	}
 	status := server.HomeRelayStatus().Current()
-	fmt.Println("home relay connected:", status != nil && status.IsConnected())
+	fmt.Fprintln(stdout, "home relay connected:", status != nil && status.IsConnected())
 	if status != nil {
-		fmt.Println("home relay:", status.URL)
+		fmt.Fprintln(stdout, "home relay:", status.URL)
 		if relayURL.IsZero() {
 			relayURL = status.URL
 		}
 	}
 
 	report, ok := waitReport(ctx, server)
-	fmt.Println("net report available:", ok)
+	fmt.Fprintln(stdout, "net report available:", ok)
 	if ok {
-		fmt.Println("udp available:", report.HasUDP())
-		fmt.Println("preferred relay:", report.PreferredRelay)
-		printRelayLatencies(report.RelayLatencies)
+		fmt.Fprintln(stdout, "udp available:", report.HasUDP())
+		fmt.Fprintln(stdout, "preferred relay:", report.PreferredRelay)
+		printRelayLatencies(report.RelayLatencies, stdout)
 	}
 
 	client, err := iroh.Bind(ctx,
@@ -125,7 +126,7 @@ func run(args []string) error {
 	if err := <-accepted; err != nil {
 		return err
 	}
-	fmt.Println("connection selected:", selectedPathKind(conn.Paths()))
+	fmt.Fprintln(stdout, "connection selected:", selectedPathKind(conn.Paths()))
 	return nil
 }
 
@@ -147,7 +148,7 @@ func relayMode(live bool) (relay.Mode, netaddr.RelayURL, func(), error) {
 	return relay.ModeCustomURLs(relayURL), relayURL, relayHTTP.Close, nil
 }
 
-func printRelayLatencies(latencies map[netaddr.RelayURL]time.Duration) {
+func printRelayLatencies(latencies map[netaddr.RelayURL]time.Duration, stdout io.Writer) {
 	urls := make([]netaddr.RelayURL, 0, len(latencies))
 	for url := range latencies {
 		urls = append(urls, url)
@@ -155,9 +156,9 @@ func printRelayLatencies(latencies map[netaddr.RelayURL]time.Duration) {
 	sort.Slice(urls, func(i, j int) bool {
 		return urls[i].String() < urls[j].String()
 	})
-	fmt.Println("relay latencies:", len(urls))
+	fmt.Fprintln(stdout, "relay latencies:", len(urls))
 	for _, url := range urls {
-		fmt.Printf("latency %s: %s\n", url, latencies[url].Round(time.Millisecond))
+		fmt.Fprintf(stdout, "latency %s: %s\n", url, latencies[url].Round(time.Millisecond))
 	}
 }
 

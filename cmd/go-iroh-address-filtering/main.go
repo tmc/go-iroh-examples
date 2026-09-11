@@ -32,6 +32,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -46,13 +47,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -85,7 +86,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", f.name, err)
 		}
-		fmt.Printf("%s: relay=%d ip=%d custom=%d\n", f.name, relay, ip, custom)
+		fmt.Fprintf(stdout, "%s: relay=%d ip=%d custom=%d\n", f.name, relay, ip, custom)
 	}
 
 	// The same filter, set on the registry instead of on one publisher. The
@@ -96,7 +97,7 @@ func run() error {
 	services.AddPublisher(&rec)
 	services.Publish(data)
 	_, ip, custom := countAddrs(rec.data.Addrs())
-	fmt.Printf("lookup services filter: ip=%d custom=%d\n", ip, custom)
+	fmt.Fprintf(stdout, "lookup services filter: ip=%d custom=%d\n", ip, custom)
 	return nil
 }
 

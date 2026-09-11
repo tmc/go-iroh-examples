@@ -40,23 +40,23 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := serveHTTP(ctx); err != nil {
+	if err := serveHTTP(ctx, stdout); err != nil {
 		return err
 	}
-	return serveRouterProtocol(ctx)
+	return serveRouterProtocol(ctx, stdout)
 }
 
-func serveHTTP(ctx context.Context) error {
+func serveHTTP(ctx context.Context, stdout io.Writer) error {
 	server, err := iroh.Bind(ctx,
 		iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)),
 		iroh.WithALPNs(httpALPN),
@@ -121,12 +121,12 @@ func serveHTTP(ctx context.Context) error {
 	if err := <-done; err != nil {
 		return err
 	}
-	fmt.Print(string(body))
-	fmt.Println("http listener:", ln.Addr())
+	fmt.Fprint(stdout, string(body))
+	fmt.Fprintln(stdout, "http listener:", ln.Addr())
 	return nil
 }
 
-func serveRouterProtocol(ctx context.Context) error {
+func serveRouterProtocol(ctx context.Context, stdout io.Writer) error {
 	server, err := iroh.Bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(netip.IPv6Loopback(), 0)))
 	if err != nil {
 		return err
@@ -186,7 +186,7 @@ func serveRouterProtocol(ctx context.Context) error {
 	if err := <-done; err != nil {
 		return err
 	}
-	fmt.Print(reply)
-	fmt.Println("router listener:", ln.Addr())
+	fmt.Fprint(stdout, reply)
+	fmt.Fprintln(stdout, "router listener:", ln.Addr())
 	return nil
 }

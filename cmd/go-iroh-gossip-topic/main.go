@@ -42,6 +42,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"sort"
@@ -59,13 +60,13 @@ import (
 const payload = "one broadcast, two receivers"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -93,7 +94,7 @@ func run() error {
 			return fmt.Errorf("subscribe %s: %w", n.name, err)
 		}
 	}
-	fmt.Printf("topic prefix: %x\n", topic[:8])
+	fmt.Fprintf(stdout, "topic prefix: %x\n", topic[:8])
 
 	// The chain. Each JoinPeers dials one bootstrap peer; the overlay is what
 	// the nodes build out of those two links.
@@ -118,15 +119,15 @@ func run() error {
 		}
 	}
 	for _, n := range nodes {
-		fmt.Printf("%s neighbors: %s\n", n.name, strings.Join(n.neighbors(), " "))
+		fmt.Fprintf(stdout, "%s neighbors: %s\n", n.name, strings.Join(n.neighbors(), " "))
 	}
-	fmt.Println("A has connection state for C:", a.knows(c))
+	fmt.Fprintln(stdout, "A has connection state for C:", a.knows(c))
 
 	// One call, addressed to no one.
 	if err := a.topic.Broadcast(ctx, []byte(payload)); err != nil {
 		return fmt.Errorf("broadcast: %w", err)
 	}
-	fmt.Printf("A broadcast: %q\n", payload)
+	fmt.Fprintf(stdout, "A broadcast: %q\n", payload)
 
 	// Both other nodes get it. B is A's neighbor, so it is delivered at round
 	// 0; C is not, so B relays it and C sees round 1.
@@ -135,16 +136,16 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s received %q from %s at round %d over the %s\n",
+		fmt.Fprintf(stdout, "%s received %q from %s at round %d over the %s\n",
 			n.name, ev.Content, n.names[ev.DeliveredFrom], ev.Round, scope(ev.Scope))
 	}
-	fmt.Println("A has connection state for C:", a.knows(c))
+	fmt.Fprintln(stdout, "A has connection state for C:", a.knows(c))
 
 	// The counters agree: A sent the message once and received nothing, B both
 	// received and forwarded it, C only received it.
 	for _, n := range nodes {
 		m := n.g.Metrics()
-		fmt.Printf("%s data messages sent=%d received=%d\n", n.name, m.MsgsDataSent, m.MsgsDataRecv)
+		fmt.Fprintf(stdout, "%s data messages sent=%d received=%d\n", n.name, m.MsgsDataSent, m.MsgsDataRecv)
 	}
 	return nil
 }

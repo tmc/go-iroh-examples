@@ -37,6 +37,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -50,13 +51,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -112,7 +113,7 @@ func run() error {
 	if err := bob.await(ctx, 1); err != nil {
 		return fmt.Errorf("bob was never caught up on the entry written before he joined: %w", err)
 	}
-	fmt.Println("bootstrap: bob reconciled 1 entry he never saw broadcast")
+	fmt.Fprintln(stdout, "bootstrap: bob reconciled 1 entry he never saw broadcast")
 
 	// From here the topic carries the writes. Neither side calls sync.
 	if err := alice.put(ctx, namespace, "after", "written while both are live"); err != nil {
@@ -121,7 +122,7 @@ func run() error {
 	if err := bob.await(ctx, 2); err != nil {
 		return fmt.Errorf("alice's live write never reached bob: %w", err)
 	}
-	fmt.Println("gossip: alice's write reached bob without a sync call")
+	fmt.Fprintln(stdout, "gossip: alice's write reached bob without a sync call")
 
 	// And the other way, which is the point of a multi-writer document.
 	if err := bob.put(ctx, namespace, "reply", "bob writes too"); err != nil {
@@ -130,12 +131,12 @@ func run() error {
 	if err := alice.await(ctx, 3); err != nil {
 		return fmt.Errorf("bob's live write never reached alice: %w", err)
 	}
-	fmt.Println("gossip: bob's write reached alice the same way")
+	fmt.Fprintln(stdout, "gossip: bob's write reached alice the same way")
 
 	if a, b := alice.store.Fingerprint(docs.Range{}), bob.store.Fingerprint(docs.Range{}); a != b {
 		return errors.New("replicas did not converge")
 	}
-	fmt.Println("converged:", alice.store.Len(), "entries on both replicas")
+	fmt.Fprintln(stdout, "converged:", alice.store.Len(), "entries on both replicas")
 
 	// Everything bob received was appended to his file as it arrived.
 	if err := bob.store.PersistError(); err != nil {
@@ -148,7 +149,7 @@ func run() error {
 	if reopened.Fingerprint(docs.Range{}) != bob.store.Fingerprint(docs.Range{}) {
 		return errors.New("bob's store did not survive being reopened")
 	}
-	fmt.Println("persisted:", reopened.Len(), "entries read back from the file")
+	fmt.Fprintln(stdout, "persisted:", reopened.Len(), "entries read back from the file")
 	return nil
 }
 

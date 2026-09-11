@@ -31,6 +31,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"time"
@@ -45,13 +46,13 @@ const alpn = "go-iroh-examples/transport-tuning/1"
 const idle = 500 * time.Millisecond
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -102,12 +103,12 @@ func run() error {
 		return fmt.Errorf("reflect: %w", err)
 	}
 
-	fmt.Println("keepalive:", tuning.KeepAlivePeriod)
-	fmt.Println("max idle:", tuning.MaxIdleTimeout)
-	fmt.Println(first)
-	fmt.Println(second)
-	fmt.Println("default direct idle:", iroh.PathMaxIdleTimeout)
-	fmt.Println("default relay idle:", iroh.RelayPathMaxIdleTimeout)
+	fmt.Fprintln(stdout, "keepalive:", tuning.KeepAlivePeriod)
+	fmt.Fprintln(stdout, "max idle:", tuning.MaxIdleTimeout)
+	fmt.Fprintln(stdout, first)
+	fmt.Fprintln(stdout, second)
+	fmt.Fprintln(stdout, "default direct idle:", iroh.PathMaxIdleTimeout)
+	fmt.Fprintln(stdout, "default relay idle:", iroh.RelayPathMaxIdleTimeout)
 	return nil
 }
 

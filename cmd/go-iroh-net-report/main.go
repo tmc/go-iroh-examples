@@ -27,6 +27,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"strconv"
@@ -37,7 +38,7 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		// -h is a request for the usage message, which the flag package has
 		// already printed. It is not a failure.
 		if errors.Is(err, flag.ErrHelp) {
@@ -48,7 +49,7 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("go-iroh-net-report", flag.ContinueOnError)
 	live := fs.Bool("live", envBool("GO_IROH_LIVE_RELAY", false), "probe n0's public relay map instead of reporting a direct-only endpoint ($GO_IROH_LIVE_RELAY)")
 	if err := fs.Parse(args); err != nil {
@@ -78,18 +79,18 @@ func run(args []string) error {
 	} else {
 		report, ok = ep.NetReport()
 	}
-	fmt.Println("live relay:", *live)
-	fmt.Println("report available:", ok)
+	fmt.Fprintln(stdout, "live relay:", *live)
+	fmt.Fprintln(stdout, "report available:", ok)
 	if !ok {
-		fmt.Println("pass -live or set GO_IROH_LIVE_RELAY=1 to run net_report against the public relay map")
+		fmt.Fprintln(stdout, "pass -live or set GO_IROH_LIVE_RELAY=1 to run net_report against the public relay map")
 		return nil
 	}
-	fmt.Println("has udp:", report.HasUDP())
-	fmt.Println("udp4:", report.UDPv4)
-	fmt.Println("udp6:", report.UDPv6)
-	fmt.Println("global v4:", report.GlobalV4)
-	fmt.Println("global v6:", report.GlobalV6)
-	fmt.Println("preferred relay:", report.PreferredRelay)
+	fmt.Fprintln(stdout, "has udp:", report.HasUDP())
+	fmt.Fprintln(stdout, "udp4:", report.UDPv4)
+	fmt.Fprintln(stdout, "udp6:", report.UDPv6)
+	fmt.Fprintln(stdout, "global v4:", report.GlobalV4)
+	fmt.Fprintln(stdout, "global v6:", report.GlobalV6)
+	fmt.Fprintln(stdout, "preferred relay:", report.PreferredRelay)
 	return nil
 }
 

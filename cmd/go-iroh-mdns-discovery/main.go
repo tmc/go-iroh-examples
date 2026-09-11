@@ -69,13 +69,13 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -87,7 +87,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("default service:", mdns.DefaultServiceName)
+	fmt.Fprintln(stdout, "default service:", mdns.DefaultServiceName)
 
 	// The announcing side. Discovery needs the endpoint ID up front, so the key
 	// is generated before the endpoint is bound.
@@ -151,7 +151,7 @@ func run() error {
 	if stopped, err := waitListening(listen); stopped {
 		// A host with no multicast interface, or one where 5353 cannot be
 		// shared, fails here rather than silently hearing nothing.
-		fmt.Printf("mDNS listener stopped (%v); %s\n", err, needsMulticast)
+		fmt.Fprintf(stdout, "mDNS listener stopped (%v); %s\n", err, needsMulticast)
 		return nil
 	}
 
@@ -168,7 +168,7 @@ func run() error {
 	// What gets announced: the endpoint's own addresses, minus the relay URLs
 	// this loopback endpoint does not have.
 	data := dns.EndpointDataFromAddr(server.Addr())
-	fmt.Println("announcing:", len(data.IPAddrs()), "address(es)")
+	fmt.Fprintln(stdout, "announcing:", len(data.IPAddrs()), "address(es)")
 	announcer.Publish(data)
 
 	// The seeker starts listening only after that announcement has come and
@@ -179,7 +179,7 @@ func run() error {
 	time.Sleep(announcementGap)
 	go func() { listen <- seeker.Start(ctx) }()
 	if stopped, err := waitListening(listen); stopped {
-		fmt.Printf("mDNS listener stopped (%v); %s\n", err, needsMulticast)
+		fmt.Fprintf(stdout, "mDNS listener stopped (%v); %s\n", err, needsMulticast)
 		return nil
 	}
 
@@ -191,13 +191,13 @@ func run() error {
 		return err
 	}
 	if !ok {
-		fmt.Printf("no peer discovered over mDNS in %s; %s\n", discoverWait, needsMulticast)
+		fmt.Fprintf(stdout, "no peer discovered over mDNS in %s; %s\n", discoverWait, needsMulticast)
 		return nil
 	}
 	addr := item.Addr()
-	fmt.Println("discovered by id:", len(addr.Addrs()), "address(es)")
-	fmt.Println("provenance:", item.Provenance())
-	fmt.Println("same endpoint:", addr.ID.Equal(server.ID()))
+	fmt.Fprintln(stdout, "discovered by id:", len(addr.Addrs()), "address(es)")
+	fmt.Fprintln(stdout, "provenance:", item.Provenance())
+	fmt.Fprintln(stdout, "same endpoint:", addr.ID.Equal(server.ID()))
 
 	conn, err := client.Connect(ctx, addr, alpn)
 	if err != nil {
@@ -212,8 +212,8 @@ func run() error {
 	if err := <-accepted; err != nil {
 		return err
 	}
-	fmt.Println("reply:", reply)
-	fmt.Println("path:", selectedPathKind(conn.Paths()))
+	fmt.Fprintln(stdout, "reply:", reply)
+	fmt.Fprintln(stdout, "path:", selectedPathKind(conn.Paths()))
 	return nil
 }
 

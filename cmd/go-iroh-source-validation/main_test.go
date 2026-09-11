@@ -1,15 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 func TestRun(t *testing.T) {
-	out, err := exampleutil.Capture(run)
+	var buf bytes.Buffer
+	err := run(&buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

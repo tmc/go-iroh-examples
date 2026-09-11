@@ -25,6 +25,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"strings"
@@ -56,13 +57,13 @@ type result struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -112,7 +113,7 @@ func run() error {
 			if r.err != nil {
 				return fmt.Errorf("job %d: %w", r.id, r.err)
 			}
-			fmt.Printf("job %d: %s\n", r.resp.ID, r.resp.Result)
+			fmt.Fprintf(stdout, "job %d: %s\n", r.resp.ID, r.resp.Result)
 		case err := <-serverErr:
 			return fmt.Errorf("serve: %w", err)
 		case <-ctx.Done():

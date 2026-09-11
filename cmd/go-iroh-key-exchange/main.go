@@ -71,13 +71,13 @@ type report struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -116,13 +116,13 @@ func run() error {
 			// The two policies share no group, so the peer sent TLS alert 40,
 			// handshake_failure. Every other dial error is a real failure and
 			// ends the run.
-			fmt.Printf("%s: refused: no key exchange group in common\n", c.name)
+			fmt.Fprintf(stdout, "%s: refused: no key exchange group in common\n", c.name)
 			continue
 		}
 		if err != nil {
 			return fmt.Errorf("%s: %w", c.name, err)
 		}
-		fmt.Printf("%s: %s, both ends agree: %v\n", c.name, dialed, dialed == accepted)
+		fmt.Fprintf(stdout, "%s: %s, both ends agree: %v\n", c.name, dialed, dialed == accepted)
 	}
 	return nil
 }

@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -59,16 +62,36 @@ func TestConventions(t *testing.T) {
 	}
 }
 
-// TestStandalone is the property the examples exist for: a main.go is a whole
+// TestStandalone is the property the examples exist for: an example is a whole
 // program. A reader copies one file, and it has to compile against go-iroh and
 // the standard library alone, with nothing interesting hidden behind a name
-// that exists only in this repository. Tests may import internal/exampleutil,
-// because a reader copies the example and not its test.
+// that exists only in this repository. The tests hold to the same rule: an
+// example's output is asserted by passing run a [bytes.Buffer], so a reader who
+// copies the test gets a test that still builds.
 func TestStandalone(t *testing.T) {
 	for _, e := range load(t).Examples {
 		for _, path := range e.Imports {
 			if path == module || strings.HasPrefix(path, module+"/") {
 				t.Errorf("%s/main.go imports %s; an example is standalone", e.Dir, path)
+			}
+		}
+	}
+	files, err := filepath.Glob(filepath.Join(root, "cmd", "*", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, spec := range f.Imports {
+			path, err := strconv.Unquote(spec.Path.Value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if path == module || strings.HasPrefix(path, module+"/") {
+				t.Errorf("%s imports %s; an example is standalone", file, path)
 			}
 		}
 	}

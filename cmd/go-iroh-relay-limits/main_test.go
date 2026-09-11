@@ -1,12 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 // The limited relay sends 2 MiB through a 1 MiB/s per-client limit. The first
@@ -24,7 +23,9 @@ const (
 var limitedRE = regexp.MustCompile(`relayed, limited: (\S+)`)
 
 func TestRun(t *testing.T) {
-	out, err := exampleutil.Capture(func() error { return run(payload, rate) })
+	var buf bytes.Buffer
+	err := run(payload, rate, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

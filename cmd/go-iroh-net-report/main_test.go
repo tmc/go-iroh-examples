@@ -1,10 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 // TestRun runs the direct-only path, which binds a loopback endpoint and needs
@@ -14,7 +13,9 @@ func TestRun(t *testing.T) {
 	if testing.Short() {
 		t.Skip("binds a loopback endpoint")
 	}
-	out, err := exampleutil.Capture(func() error { return run([]string{"-live=false"}) })
+	var buf bytes.Buffer
+	err := run([]string{"-live=false"}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -47,10 +48,12 @@ func TestRunLive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("probes the public relay map")
 	}
-	if !exampleutil.EnvBool("GO_IROH_LIVE_RELAY", false) {
+	if !envBool("GO_IROH_LIVE_RELAY", false) {
 		t.Skip("set GO_IROH_LIVE_RELAY=1 to probe n0's public relay map")
 	}
-	out, err := exampleutil.Capture(func() error { return run([]string{"-live"}) })
+	var buf bytes.Buffer
+	err := run([]string{"-live"}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

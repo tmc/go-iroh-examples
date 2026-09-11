@@ -70,13 +70,13 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -127,7 +127,7 @@ func run() error {
 	if err := <-accepted; err != nil {
 		return err
 	}
-	fmt.Println("reply:", reply)
+	fmt.Fprintln(stdout, "reply:", reply)
 
 	// Closing the connection is what closes the trace: the sink's writer is
 	// closed once, when the connection ends, so a trace read before that is
@@ -146,8 +146,8 @@ func run() error {
 	// The file name is the connection id and the side, which is how the two
 	// ends of one connection are paired after the fact.
 	id, side, _ := strings.Cut(strings.TrimSuffix(name, ".sqlog"), "_")
-	fmt.Println("client trace side:", side)
-	fmt.Println("both ends share the connection id:", id == serverTrace.id)
+	fmt.Fprintln(stdout, "client trace side:", side)
+	fmt.Fprintln(stdout, "both ends share the connection id:", id == serverTrace.id)
 
 	for _, t := range []struct {
 		name string
@@ -160,9 +160,9 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("%s trace: %w", t.name, err)
 		}
-		fmt.Printf("%s trace: %d records, %d event kinds\n", t.name, len(names), countKinds(names))
-		fmt.Printf("%s trace has packet_sent: %v\n", t.name, has(names, "packet_sent"))
-		fmt.Printf("%s trace contains the payload: %v\n", t.name, bytes.Contains(t.data, []byte(payload)))
+		fmt.Fprintf(stdout, "%s trace: %d records, %d event kinds\n", t.name, len(names), countKinds(names))
+		fmt.Fprintf(stdout, "%s trace has packet_sent: %v\n", t.name, has(names, "packet_sent"))
+		fmt.Fprintf(stdout, "%s trace contains the payload: %v\n", t.name, bytes.Contains(t.data, []byte(payload)))
 	}
 	return nil
 }

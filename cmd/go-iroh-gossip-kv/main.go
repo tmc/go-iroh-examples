@@ -33,6 +33,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"sort"
@@ -45,13 +46,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -104,8 +105,8 @@ func run() error {
 		return ctx.Err()
 	}
 
-	fmt.Printf("node %s joined %d neighbor\n", b.endpoint.ID().Short(), len(receiver.Neighbors()))
-	a.store.print()
+	fmt.Fprintf(stdout, "node %s joined %d neighbor\n", b.endpoint.ID().Short(), len(receiver.Neighbors()))
+	a.store.print(stdout)
 	return nil
 }
 
@@ -256,7 +257,7 @@ func (s kvStore) apply(data []byte) error {
 	return nil
 }
 
-func (s kvStore) print() {
+func (s kvStore) print(stdout io.Writer) {
 	keys := make([]string, 0, len(s))
 	for key := range s {
 		keys = append(keys, key)
@@ -264,7 +265,7 @@ func (s kvStore) print() {
 	sort.Strings(keys)
 	for _, key := range keys {
 		v := s[key]
-		fmt.Printf("%s=%s seq=%d signer=%s\n", key, v.Value, v.Seq, v.Author)
+		fmt.Fprintf(stdout, "%s=%s seq=%d signer=%s\n", key, v.Value, v.Seq, v.Author)
 	}
 }
 

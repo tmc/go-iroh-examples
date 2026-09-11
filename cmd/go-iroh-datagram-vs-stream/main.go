@@ -34,13 +34,13 @@ type receivedMessage struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -72,28 +72,28 @@ func run() error {
 	// The limit itself depends on the path MTU, so print what it decides
 	// rather than the number.
 	n, ok := conn.MaxDatagramSize()
-	fmt.Println("datagrams negotiated:", ok)
+	fmt.Fprintln(stdout, "datagrams negotiated:", ok)
 	if ok {
-		fmt.Println("small fits in a datagram:", len(small) <= n)
-		fmt.Println("large fits in a datagram:", len(large) <= n)
+		fmt.Fprintln(stdout, "small fits in a datagram:", len(small) <= n)
+		fmt.Fprintln(stdout, "large fits in a datagram:", len(large) <= n)
 	}
 
 	via, err := sendMessage(ctx, conn, small)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("small sent via %s (%d bytes)\n", via, len(small))
+	fmt.Fprintf(stdout, "small sent via %s (%d bytes)\n", via, len(small))
 
 	via, err = sendMessage(ctx, conn, large)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("large sent via %s (%d bytes)\n", via, len(large))
+	fmt.Fprintf(stdout, "large sent via %s (%d bytes)\n", via, len(large))
 
 	for range 2 {
 		select {
 		case msg := <-received:
-			fmt.Printf("server received %s (%d bytes)\n", msg.Via, msg.Len)
+			fmt.Fprintf(stdout, "server received %s (%d bytes)\n", msg.Via, msg.Len)
 		case err := <-serverErr:
 			return err
 		case <-ctx.Done():

@@ -1,10 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 // TestRun serves the built-in payload. -file is passed empty rather than left
@@ -12,7 +11,9 @@ import (
 // hash of the built-in payload, so an exported IROH_EXAMPLE_FILE would serve a
 // different file and fail a test that is not about files at all.
 func TestRun(t *testing.T) {
-	out, err := exampleutil.Capture(func() error { return run([]string{"-file="}) })
+	var buf bytes.Buffer
+	err := run([]string{"-file="}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

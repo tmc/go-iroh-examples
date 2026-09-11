@@ -1,10 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/tmc/go-iroh-examples/internal/exampleutil"
 )
 
 // TestRun exercises the in-process relay, which needs no network. -live is
@@ -13,7 +12,9 @@ import (
 // an exported GO_IROH_LIVE_RELAY would diagnose n0's public ones instead. The
 // live path is not tested here; it depends on those relays being reachable.
 func TestRun(t *testing.T) {
-	out, err := exampleutil.Capture(func() error { return run([]string{"-live=false"}) })
+	var buf bytes.Buffer
+	err := run([]string{"-live=false"}, &buf)
+	out := buf.String()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}

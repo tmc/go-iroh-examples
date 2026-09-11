@@ -53,30 +53,30 @@ func main() {
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
 	}
-	if err := run(*bytes, *rate); err != nil {
+	if err := run(*bytes, *rate, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(payload, rate int64) error {
+func run(payload, rate int64, stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	fmt.Printf("payload: %d bytes, limit: %d bytes/s\n", payload, rate)
+	fmt.Fprintf(stdout, "payload: %d bytes, limit: %d bytes/s\n", payload, rate)
 
 	unlimited, err := transfer(ctx, relayserver.New(), payload, false)
 	if err != nil {
 		return fmt.Errorf("unlimited relay: %w", err)
 	}
-	fmt.Printf("relayed, no limit: %s\n", round(unlimited))
+	fmt.Fprintf(stdout, "relayed, no limit: %s\n", round(unlimited))
 
 	limited, err := transfer(ctx, relayserver.NewWithOptions(relayserver.WithClientRate(rate)), payload, false)
 	if err != nil {
 		return fmt.Errorf("limited relay: %w", err)
 	}
-	fmt.Printf("relayed, limited: %s\n", round(limited))
-	fmt.Println("limit slowed the relayed transfer:", limited > unlimited)
+	fmt.Fprintf(stdout, "relayed, limited: %s\n", round(limited))
+	fmt.Fprintln(stdout, "limit slowed the relayed transfer:", limited > unlimited)
 
 	// The same limited relay, but the connection is allowed to find a direct
 	// path first. The relay's rate limit never sees these bytes.
@@ -84,8 +84,8 @@ func run(payload, rate int64) error {
 	if err != nil {
 		return fmt.Errorf("limited relay, direct path: %w", err)
 	}
-	fmt.Printf("direct, same limit: %s\n", round(direct))
-	fmt.Println("limit applied to the direct transfer:", direct >= limited)
+	fmt.Fprintf(stdout, "direct, same limit: %s\n", round(direct))
+	fmt.Fprintln(stdout, "limit applied to the direct transfer:", direct >= limited)
 	return nil
 }
 

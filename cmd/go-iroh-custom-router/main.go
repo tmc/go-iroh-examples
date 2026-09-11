@@ -63,13 +63,13 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -92,21 +92,21 @@ func run() error {
 	defer client.Shutdown(ctx)
 
 	// Serving alpn1 only.
-	report(ctx, client, server.Addr(), alpn1)
-	report(ctx, client, server.Addr(), alpn2)
-	report(ctx, client, server.Addr(), alpn3)
+	report(ctx, client, server.Addr(), alpn1, stdout)
+	report(ctx, client, server.Addr(), alpn2, stdout)
+	report(ctx, client, server.Addr(), alpn3, stdout)
 
 	// Stop serving alpn1. It stays advertised, so the dial still gets through
 	// the handshake and is dropped by the router instead.
-	fmt.Printf("remove %s: %v\n", short(alpn1), r.remove(alpn1))
-	report(ctx, client, server.Addr(), alpn1)
-	report(ctx, client, server.Addr(), alpn2)
+	fmt.Fprintf(stdout, "remove %s: %v\n", short(alpn1), r.remove(alpn1))
+	report(ctx, client, server.Addr(), alpn1, stdout)
+	report(ctx, client, server.Addr(), alpn2, stdout)
 
 	// Start serving alpn2, on the same running router.
-	fmt.Printf("add %s\n", short(alpn2))
+	fmt.Fprintf(stdout, "add %s\n", short(alpn2))
 	r.handle(alpn2, echo)
-	report(ctx, client, server.Addr(), alpn1)
-	report(ctx, client, server.Addr(), alpn2)
+	report(ctx, client, server.Addr(), alpn1, stdout)
+	report(ctx, client, server.Addr(), alpn2, stdout)
 
 	return nil
 }
@@ -174,28 +174,28 @@ func (r *router) serve(ctx context.Context) {
 }
 
 // report dials alpn and prints which of the three outcomes it got.
-func report(ctx context.Context, client *iroh.Endpoint, addr netaddr.EndpointAddr, alpn string) {
+func report(ctx context.Context, client *iroh.Endpoint, addr netaddr.EndpointAddr, alpn string, stdout io.Writer) {
 	conn, err := client.Connect(ctx, addr, alpn)
 	if err != nil {
 		if strings.Contains(err.Error(), "no application protocol") {
-			fmt.Printf("dial %s: refused during negotiation, not advertised\n", short(alpn))
+			fmt.Fprintf(stdout, "dial %s: refused during negotiation, not advertised\n", short(alpn))
 			return
 		}
-		fmt.Printf("dial %s: %v\n", short(alpn), err)
+		fmt.Fprintf(stdout, "dial %s: %v\n", short(alpn), err)
 		return
 	}
 	defer conn.CloseWithError(0, "")
 
 	reply, err := exchange(ctx, conn, "hello")
 	if err == nil {
-		fmt.Printf("dial %s: served, echoed %q\n", short(alpn), reply)
+		fmt.Fprintf(stdout, "dial %s: served, echoed %q\n", short(alpn), reply)
 		return
 	}
 	if app, ok := iroh.AsApplicationError(err); ok && app.Remote && app.Code == noHandlerCode {
-		fmt.Printf("dial %s: connected, then closed with code %d (%s)\n", short(alpn), app.Code, app.Reason)
+		fmt.Fprintf(stdout, "dial %s: connected, then closed with code %d (%s)\n", short(alpn), app.Code, app.Reason)
 		return
 	}
-	fmt.Printf("dial %s: %v\n", short(alpn), err)
+	fmt.Fprintf(stdout, "dial %s: %v\n", short(alpn), err)
 }
 
 // short is the trailing version of an ALPN, which is what varies here.

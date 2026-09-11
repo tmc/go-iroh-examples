@@ -51,13 +51,13 @@ const alpn = "go-iroh-examples/stream-netconn/1"
 const deadline = 5 * time.Second
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -76,7 +76,7 @@ func run() error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- serve(ctx, server, release)
+		serverErr <- serve(ctx, server, release, stdout)
 	}()
 
 	client, err := bind(ctx)
@@ -107,14 +107,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("read reply: %w", err)
 	}
-	fmt.Print(reply)
+	fmt.Fprint(stdout, reply)
 
 	// A net.Conn over iroh half-closes, the same probe net/http and
 	// httputil.ReverseProxy make on a *net.TCPConn. Close would end both
 	// directions; CloseWrite ends only the send side, which the peer sees as a
 	// plain EOF.
 	cw, ok := stream.(interface{ CloseWrite() error })
-	fmt.Println("half-close supported:", ok)
+	fmt.Fprintln(stdout, "half-close supported:", ok)
 	if ok {
 		if err := cw.CloseWrite(); err != nil {
 			return fmt.Errorf("close write: %w", err)
@@ -130,7 +130,7 @@ func run() error {
 
 // serve accepts one stream as a net.Conn, uppercases the line it reads, and
 // waits for release before letting the connection close.
-func serve(ctx context.Context, ep *iroh.Endpoint, release <-chan struct{}) error {
+func serve(ctx context.Context, ep *iroh.Endpoint, release <-chan struct{}, stdout io.Writer) error {
 	conn, err := ep.Accept(ctx)
 	if err != nil {
 		return err
@@ -162,7 +162,7 @@ func serve(ctx context.Context, ep *iroh.Endpoint, release <-chan struct{}) erro
 	if err != nil {
 		return fmt.Errorf("read after reply: %w", err)
 	}
-	fmt.Println("peer half-closed after", len(rest), "more bytes")
+	fmt.Fprintln(stdout, "peer half-closed after", len(rest), "more bytes")
 	return nil
 }
 

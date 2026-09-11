@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/tmc/go-iroh/iroh"
 )
@@ -12,17 +13,17 @@ import (
 // address before the connection is converted to an [iroh.Conn]. Implementing
 // OnAccepting is optional; a handler that does not need to intercept can omit it
 // and the router uses [iroh.Accepting.Connection] by default.
-type loggingEchoHandler struct{}
+type loggingEchoHandler struct{ stdout io.Writer }
 
 // OnAccepting logs the accepted connection, then completes the handshake by
 // returning the verified connection. Returning an error here refuses the
 // connection without invoking Accept.
-func (loggingEchoHandler) OnAccepting(ctx context.Context, accepting *iroh.Accepting) (*iroh.Conn, error) {
+func (h loggingEchoHandler) OnAccepting(ctx context.Context, accepting *iroh.Accepting) (*iroh.Conn, error) {
 	alpn, err := accepting.ALPN(ctx)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("on-accepting: alpn=%q remote=%s\n", alpn, accepting.RemoteAddr())
+	fmt.Fprintf(h.stdout, "on-accepting: alpn=%q remote=%s\n", alpn, accepting.RemoteAddr())
 	return accepting.Connection(ctx)
 }
 

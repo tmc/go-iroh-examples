@@ -30,13 +30,13 @@ import (
 const alpn = "go-iroh-examples/graceful-shutdown/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -79,22 +79,22 @@ func run() error {
 	if err := handler.WaitStarted(ctx); err != nil {
 		return err
 	}
-	fmt.Println("handler: request in flight")
+	fmt.Fprintln(stdout, "handler: request in flight")
 
 	stop()
 	<-ctx.Done()
-	fmt.Println("signal: shutdown requested")
+	fmt.Fprintln(stdout, "signal: shutdown requested")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := router.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
-	fmt.Println("shutdown: router drained")
+	fmt.Fprintln(stdout, "shutdown: router drained")
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
-	fmt.Println("shutdown: endpoint closed")
+	fmt.Fprintln(stdout, "shutdown: endpoint closed")
 	return nil
 }
 

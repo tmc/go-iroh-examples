@@ -32,13 +32,13 @@ import (
 const alpn = "go-iroh-examples/router-echo/1"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -71,7 +71,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(reply)
+	fmt.Fprintln(stdout, reply)
 	return nil
 }
 

@@ -30,6 +30,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"strconv"
@@ -46,7 +47,7 @@ import (
 const publishedAddr = "203.0.113.10:4433"
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		// -h is a request for the usage message, which the flag package has
 		// already printed. It is not a failure.
 		if errors.Is(err, flag.ErrHelp) {
@@ -57,14 +58,14 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("go-iroh-pkarr-publish-resolve", flag.ContinueOnError)
 	live := fs.Bool("live", envBool("GO_IROH_LIVE_PKARR", false), "publish to and resolve from n0's public pkarr relay ($GO_IROH_LIVE_PKARR)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if !*live {
-		fmt.Println("pass -live or set GO_IROH_LIVE_PKARR=1 to publish to and resolve from the public pkarr relay")
+		fmt.Fprintln(stdout, "pass -live or set GO_IROH_LIVE_PKARR=1 to publish to and resolve from the public pkarr relay")
 		return nil
 	}
 
@@ -101,8 +102,8 @@ func run(args []string) error {
 				lastErr = err
 				continue
 			}
-			fmt.Println("published endpoint:", item.EndpointID().Z32())
-			fmt.Println("resolved direct paths:", item.Addr().IPAddrs())
+			fmt.Fprintln(stdout, "published endpoint:", item.EndpointID().Z32())
+			fmt.Fprintln(stdout, "resolved direct paths:", item.Addr().IPAddrs())
 			return nil
 		}
 		time.Sleep(time.Second)

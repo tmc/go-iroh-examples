@@ -25,6 +25,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"time"
@@ -34,7 +35,7 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		// -h is a request for the usage message, which the flag package has
 		// already printed. It is not a failure.
 		if errors.Is(err, flag.ErrHelp) {
@@ -45,14 +46,14 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("go-iroh-relay-online", flag.ContinueOnError)
 	live := fs.Bool("live", envBool("GO_IROH_LIVE_RELAY", false), "connect to n0's default public relays ($GO_IROH_LIVE_RELAY)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if !*live {
-		fmt.Println("pass -live or set GO_IROH_LIVE_RELAY=1 to connect to the default public relays")
+		fmt.Fprintln(stdout, "pass -live or set GO_IROH_LIVE_RELAY=1 to connect to the default public relays")
 		return nil
 	}
 
@@ -72,10 +73,10 @@ func run(args []string) error {
 	if status == nil {
 		return errors.New("online reported success with no home relay")
 	}
-	fmt.Println("endpoint id:", ep.ID().Z32())
-	fmt.Println("home relay:", status.URL)
-	fmt.Println("connected:", status.IsConnected())
-	fmt.Println("advertised relays:", ep.Addr().RelayURLs())
+	fmt.Fprintln(stdout, "endpoint id:", ep.ID().Z32())
+	fmt.Fprintln(stdout, "home relay:", status.URL)
+	fmt.Fprintln(stdout, "connected:", status.IsConnected())
+	fmt.Fprintln(stdout, "advertised relays:", ep.Addr().RelayURLs())
 	return nil
 }
 

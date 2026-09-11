@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"time"
@@ -37,13 +38,13 @@ type frame struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -117,7 +118,7 @@ func run() error {
 			if !ok {
 				return nil
 			}
-			fmt.Printf("%c%d %s\n", f.Kind, f.Seq, f.Data)
+			fmt.Fprintf(stdout, "%c%d %s\n", f.Kind, f.Seq, f.Data)
 		case err := <-errs:
 			return err
 		case <-ctx.Done():

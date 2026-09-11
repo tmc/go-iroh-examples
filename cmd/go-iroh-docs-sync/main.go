@@ -45,6 +45,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"slices"
@@ -57,7 +58,7 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -121,7 +122,7 @@ func (r *replica) haveContent(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -190,10 +191,10 @@ func run() error {
 	}
 	capability := joined.Capability()
 	secret, writable := capability.Secret()
-	fmt.Println("ticket kind:", joined.Kind())
-	fmt.Println("ticket grants write:", writable)
-	fmt.Println("ticket nodes:", len(joined.Nodes()))
-	fmt.Println("same namespace:", capability.NamespaceID() == namespace.ID())
+	fmt.Fprintln(stdout, "ticket kind:", joined.Kind())
+	fmt.Fprintln(stdout, "ticket grants write:", writable)
+	fmt.Fprintln(stdout, "ticket nodes:", len(joined.Nodes()))
+	fmt.Fprintln(stdout, "same namespace:", capability.NamespaceID() == namespace.ID())
 
 	// Bob writes before he has ever met alice. One of his keys collides with
 	// hers; because the author is part of the entry identifier, the collision
@@ -207,8 +208,8 @@ func run() error {
 		}
 	}
 
-	fmt.Println("alice before sync:", alice.entries.Len(), "entries")
-	fmt.Println("bob before sync:", bob.entries.Len(), "entries")
+	fmt.Fprintln(stdout, "alice before sync:", alice.entries.Len(), "entries")
+	fmt.Fprintln(stdout, "bob before sync:", bob.entries.Len(), "entries")
 
 	// One sync is symmetric: bob sends what alice is missing and receives what
 	// he is missing, in the same stream.
@@ -216,17 +217,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("sync 1: sent=%d received=%d\n", first.NumSent, first.NumRecv)
-	fmt.Println("alice after sync:", alice.entries.Len(), "entries")
-	fmt.Println("bob after sync:", bob.entries.Len(), "entries")
-	fmt.Println("fingerprints equal:", converged(alice, bob))
+	fmt.Fprintf(stdout, "sync 1: sent=%d received=%d\n", first.NumSent, first.NumRecv)
+	fmt.Fprintln(stdout, "alice after sync:", alice.entries.Len(), "entries")
+	fmt.Fprintln(stdout, "bob after sync:", bob.entries.Len(), "entries")
+	fmt.Fprintln(stdout, "fingerprints equal:", converged(alice, bob))
 
 	names := map[string]string{
 		alice.author.ID().String(): "alice",
 		bob.author.ID().String():   "bob",
 	}
-	printDocument("alice", alice, names)
-	printDocument("bob", bob, names)
+	printDocument("alice", alice, names, stdout)
+	printDocument("bob", bob, names, stdout)
 
 	// The entries travelled; the bytes did not. Each replica can still name
 	// every value by hash, and fetches the ones it wants over iroh-blobs.
@@ -238,8 +239,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("content on alice: %d of %d entries\n", aliceContent, alice.entries.Len())
-	fmt.Printf("content on bob: %d of %d entries\n", bobContent, bob.entries.Len())
+	fmt.Fprintf(stdout, "content on alice: %d of %d entries\n", aliceContent, alice.entries.Len())
+	fmt.Fprintf(stdout, "content on bob: %d of %d entries\n", bobContent, bob.entries.Len())
 
 	// A newer write by the same author under the same key replaces the older
 	// entry rather than adding one.
@@ -247,8 +248,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("older entries replaced:", outcome.Removed())
-	fmt.Println("alice after update:", alice.entries.Len(), "entries")
+	fmt.Fprintln(stdout, "older entries replaced:", outcome.Removed())
+	fmt.Fprintln(stdout, "alice after update:", alice.entries.Len(), "entries")
 
 	// The second sync reconciles the same five keys, but the fingerprints
 	// agree everywhere except the range holding the changed entry, so only
@@ -257,19 +258,19 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("sync 2: sent=%d received=%d\n", second.NumSent, second.NumRecv)
+	fmt.Fprintf(stdout, "sync 2: sent=%d received=%d\n", second.NumSent, second.NumRecv)
 
 	updated, ok := bob.entries.GetExact(namespace.ID(), alice.author.ID(), []byte("menu/coffee"), false)
 	if !ok {
 		return fmt.Errorf("bob is missing alice's menu/coffee entry")
 	}
-	fmt.Println("bob has alice's update:", updated.Entry.ContentHash() == blobs.NewHash([]byte("cold brew")))
+	fmt.Fprintln(stdout, "bob has alice's update:", updated.Entry.ContentHash() == blobs.NewHash([]byte("cold brew")))
 
 	// An entry carries the namespace and author signatures over its own
 	// contents, so bob validates alice's write without trusting the peer he
 	// received it from.
-	fmt.Println("signature verifies:", updated.Verify() == nil)
-	fmt.Println("fingerprints equal:", converged(alice, bob))
+	fmt.Fprintln(stdout, "signature verifies:", updated.Verify() == nil)
+	fmt.Fprintln(stdout, "fingerprints equal:", converged(alice, bob))
 	return nil
 }
 
@@ -304,7 +305,7 @@ func seed(b byte) [32]byte {
 
 // printDocument prints one replica's entries, sorted so that the output does
 // not depend on store iteration order.
-func printDocument(title string, r *replica, names map[string]string) {
+func printDocument(title string, r *replica, names map[string]string, stdout io.Writer) {
 	rows := make([]string, 0, r.entries.Len())
 	for _, entry := range r.entries.Entries() {
 		rows = append(rows, fmt.Sprintf("  %-12s %-5s %2d bytes  %s",
@@ -314,9 +315,9 @@ func printDocument(title string, r *replica, names map[string]string) {
 			entry.Entry.ContentHash().Short()))
 	}
 	slices.Sort(rows)
-	fmt.Printf("%s document:\n", title)
+	fmt.Fprintf(stdout, "%s document:\n", title)
 	for _, row := range rows {
-		fmt.Println(row)
+		fmt.Fprintln(stdout, row)
 	}
 }
 

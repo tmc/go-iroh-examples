@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/tmc/go-iroh/key"
@@ -45,13 +46,13 @@ var seed = [32]byte{
 const name = "_iroh"
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	sk := key.NewSecretKey(seed)
 	values := []string{"relay=https://relay.example/", "addrpath=1"}
 
@@ -62,9 +63,9 @@ func run() error {
 		return fmt.Errorf("sign packet: %w", err)
 	}
 	wire := packet.Bytes()
-	fmt.Println("key:", packet.PublicKey().Short())
-	fmt.Println("signed:", len(wire), "bytes")
-	fmt.Println("records:", packet.TxtRecords(name))
+	fmt.Fprintln(stdout, "key:", packet.PublicKey().Short())
+	fmt.Fprintln(stdout, "signed:", len(wire), "bytes")
+	fmt.Fprintln(stdout, "records:", packet.TxtRecords(name))
 
 	// FromBytes verifies the signature before it returns anything, so a packet
 	// that parses is a packet the named key vouched for.
@@ -78,7 +79,7 @@ func run() error {
 	if !got.PublicKey().Equal(sk.Public()) {
 		return errors.New("parsed packet names a different key")
 	}
-	fmt.Println("verified:", len(got.AllTxtRecords()), "TXT records")
+	fmt.Fprintln(stdout, "verified:", len(got.AllTxtRecords()), "TXT records")
 
 	// Flipping a byte of the records invalidates the signature over them.
 	// Unchecked parsing still reads the packet, which is what a tool that
@@ -91,7 +92,7 @@ func run() error {
 	if _, err := pkarr.FromBytesUnchecked(tampered); err != nil {
 		return fmt.Errorf("unchecked parse of a tampered packet: %w", err)
 	}
-	fmt.Println("tampered: signature rejected, unchecked parse still reads it")
+	fmt.Fprintln(stdout, "tampered: signature rejected, unchecked parse still reads it")
 
 	// A pkarr relay stores the signature and the DNS packet without the public
 	// key, because the key is the URL the payload was PUT to.
@@ -103,7 +104,7 @@ func run() error {
 	if !bytes.Equal(relayed.Bytes(), wire) {
 		return errors.New("relay payload does not reconstruct the packet")
 	}
-	fmt.Println("relay payload:", len(payload), "bytes, reconstructs the packet")
+	fmt.Fprintln(stdout, "relay payload:", len(payload), "bytes, reconstructs the packet")
 
 	// Timestamps are strictly monotonic, so a resolver can order two packets
 	// from one key and keep the later one.
@@ -114,6 +115,6 @@ func run() error {
 	if !newer.MoreRecentThan(packet) {
 		return errors.New("the second packet is not more recent than the first")
 	}
-	fmt.Println("supersedes: the later packet wins")
+	fmt.Fprintln(stdout, "supersedes: the later packet wins")
 	return nil
 }

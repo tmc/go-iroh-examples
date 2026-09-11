@@ -58,13 +58,13 @@ type file struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -73,7 +73,7 @@ func run() error {
 		return err
 	}
 	router, err := iroh.NewRouter(server, map[string]iroh.ProtocolHandler{
-		alpn: chessHandler{},
+		alpn: chessHandler{stdout},
 	}, nil)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("received move: %+v\n", mv)
+	fmt.Fprintf(stdout, "received move: %+v\n", mv)
 
 	if err := sendMove(s, move{From: file{3, 2}, To: file{3, 3}}); err != nil {
 		return err
@@ -115,15 +115,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("received move: %+v\n", mv)
+	fmt.Fprintf(stdout, "received move: %+v\n", mv)
 	return nil
 }
 
 // chessHandler plays the black side of a two-move opening.
-type chessHandler struct{}
+type chessHandler struct{ stdout io.Writer }
 
 // Accept implements [iroh.ProtocolHandler].
-func (chessHandler) Accept(ctx context.Context, conn *iroh.Conn) error {
+func (h chessHandler) Accept(ctx context.Context, conn *iroh.Conn) error {
 	s, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return err
@@ -134,7 +134,7 @@ func (chessHandler) Accept(ctx context.Context, conn *iroh.Conn) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("got move: %+v\n", mv)
+	fmt.Fprintf(h.stdout, "got move: %+v\n", mv)
 	if err := sendMove(s, move{From: file{5, 7}, To: file{5, 6}}); err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (chessHandler) Accept(ctx context.Context, conn *iroh.Conn) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("got move: %+v\n", mv)
+	fmt.Fprintf(h.stdout, "got move: %+v\n", mv)
 	return sendMove(s, move{From: file{5, 8}, To: file{5, 7}})
 }
 
