@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/automerge/automerge-go v0.0.0-20241030180337-6fb4f2d08244
-	github.com/tmc/go-iroh v0.2.0
+	github.com/tmc/go-iroh v0.2.1
 )
 
 require (
@@ -12,8 +12,8 @@ require (
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/quic-go/quic-go v0.62.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/crypto v0.56.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
