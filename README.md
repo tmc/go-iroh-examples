@@ -126,7 +126,7 @@ this repository's to claim.
 
 | Example | Shows |
 |---|---|
-| `go-iroh-dumbpipe` | piping stdin to stdout over iroh, wire-compatible with Rust `dumbpipe` |
+| `go-iroh-dumbpipe` | n0's `dumbpipe`: stdio, TCP, and Unix-socket pipes over iroh |
 | `go-iroh-doctor` | relay status, net report, latencies, and selected path |
 | `go-iroh-public-endpoint` | binding a reachable UDP address, and dialing one by ID plus coordinates |
 
@@ -154,10 +154,10 @@ from the environment, and their tests skip with a message naming what to set.
 Flags win over the environment, and `-h` lists each flag with the variable it
 falls back to. Two loopback examples also take configuration:
 `go-iroh-blobs-transfer` takes `-file` (`IROH_EXAMPLE_FILE`) to serve a real file
-instead of its embedded payload, and `go-iroh-dumbpipe` takes `-alpn`, `-bind`
-(`GO_IROH_DUMBPIPE_BIND_ADDR`), `-advertise`
-(`GO_IROH_DUMBPIPE_ADVERTISE_ADDR`), `-relay`, `-no-relay`, `-key`, and
-`-ticket`.
+instead of its embedded payload. `go-iroh-dumbpipe` runs a loopback demo with
+no arguments and otherwise takes the Rust tool's commands and flags, listed
+under Rust interoperability below; `IROH_SECRET` sets the endpoint's secret
+key, as it does for Rust `dumbpipe`.
 
 `go-iroh-doctor` also takes `-live` (`GO_IROH_LIVE_RELAY`), but its default path
 diagnoses an in-process relay and needs no network.
@@ -174,8 +174,10 @@ go run ./cmd/go-iroh-public-endpoint connect -peer-id <id> -peer-ip <host:port>
 Ticket strings and several ALPNs are shared with the Rust implementation, so
 these examples interoperate with n0's tools rather than imitating them.
 
-`go-iroh-dumbpipe` speaks ALPN `DUMBPIPEV0`, the `hello` stream handshake, and
-`iroh-tickets` endpoint tickets. Go listener, Rust dialer:
+`go-iroh-dumbpipe` is n0's [`dumbpipe`](https://github.com/n0-computer/dumbpipe)
+0.39: the same commands, the same flags spelled Go's way, the same output, and
+the same wire protocol. Tickets cross between the implementations, with one
+exception noted below. Go listener, Rust dialer:
 
 ```sh
 go run ./cmd/go-iroh-dumbpipe listen
@@ -183,27 +185,40 @@ go run ./cmd/go-iroh-dumbpipe listen
 printf 'hello from rust\n' | dumbpipe connect <ticket>
 ```
 
-Rust listener, Go dialer:
+| `dumbpipe` | `go-iroh-dumbpipe` |
+|---|---|
+| `generate-ticket` | `generate-ticket` |
+| `listen [--recv-only]` | `listen [-recv-only]` |
+| `connect [--recv-only] <ticket>` | `connect [-recv-only] <ticket>` |
+| `listen-tcp --host <addr>` | `listen-tcp -host <addr>` |
+| `connect-tcp --addr <addr> <ticket>` | `connect-tcp -addr <addr> <ticket>` |
+| `listen-unix --socket-path <path>` | `listen-unix -socket-path <path>` |
+| `connect-unix --socket-path <path> <ticket>` | `connect-unix -socket-path <path> <ticket>` |
+| `--ipv4-addr`, `--ipv6-addr` | `-ipv4-addr`, `-ipv6-addr` |
+| `--custom-alpn utf8:<text>` or hex | `-custom-alpn utf8:<text>` or hex |
+| `-v` (short ticket) | `-v` |
+| `IROH_SECRET` | `IROH_SECRET` |
+| (none) | `-no-relay`, to stay off the public relays |
+
+The differences are small. go-iroh binds one UDP socket, so the Go tool takes
+an IPv4 or an IPv6 bind address but not both. Go's `listen-tcp` and
+`listen-unix` accept every stream on a connection where dumbpipe takes the
+first, so that they also serve dumbpipe's `connect-unix`, which opens a stream
+per local client on one connection.
+
+The exception: with go-iroh v0.2.1, `go-iroh-dumbpipe connect` cannot read a
+ticket from Rust `dumbpipe listen` that lists an IPv6 address, which on a
+machine with IPv6 is every one. go-iroh's `endpointticket` writes and expects
+an IPv6 flow label and scope ID after the port; iroh's tickets carry neither.
+Rust reading Go tickets is unaffected while the Go listener binds IPv4.
+
+`-custom-alpn` pipes bytes under any other protocol name and skips the
+dumbpipe handshake, which is netcat over iroh:
 
 ```sh
-dumbpipe listen
-printf 'hello from go\n' | go run ./cmd/go-iroh-dumbpipe connect <ticket>
+go run ./cmd/go-iroh-dumbpipe listen -custom-alpn utf8:MYAPPV0
+go run ./cmd/go-iroh-dumbpipe connect -custom-alpn utf8:MYAPPV0 <ticket>
 ```
-
-Both directions are tested against Rust `dumbpipe` rather than checked by hand:
-`interop/` builds a peer from the published `dumbpipe` crate, taking the ALPN
-and the handshake from the crate's own constants. The listener advertises a
-public relay by default, so the printed ticket is usable
-from another machine; `-no-relay` keeps it local. `-alpn` pipes bytes under any
-other protocol name and skips the dumbpipe handshake, which is netcat over iroh:
-
-```sh
-go run ./cmd/go-iroh-dumbpipe listen -alpn MYAPPV0 -key ./pipe.key -ticket ./pipe.ticket
-go run ./cmd/go-iroh-dumbpipe connect -alpn MYAPPV0 "$(cat ./pipe.ticket)"
-```
-
-`-key` keeps the endpoint ID stable across restarts; `-ticket` writes the
-current ticket to a file.
 
 Ported from n0's corpus: `go-iroh-blobs-transfer` (sendme), `go-iroh-blobs-gateway`
 (iroh-gateway), `go-iroh-gossip-kv` (iroh-smol-kv), `go-iroh-ping` (iroh-ping),
@@ -213,8 +228,8 @@ blobs examples speak `/iroh-bytes/4`.
 
 `go-iroh-framed-messages` and `go-iroh-dumbpipe` are checked against the Rust
 implementations rather than described as compatible with them: `interop/` builds
-n0's own `framed-messages` crate and the published `dumbpipe` crate as live
-peers, and both directions of each are tested. See
+n0's own `framed-messages` crate, a peer from the published `dumbpipe` crate,
+and the released `dumbpipe` binary, and both directions of each are tested. See
 [interop/README.md](interop/README.md).
 
 ## What is not here

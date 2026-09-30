@@ -44,5 +44,16 @@ Both directions are covered for both protocols: Go dialing a Rust server, and
 Rust dialing a Go server. Without the variables the live tests skip and the
 pinned-vector tests still run.
 
+The command-line example is also run against the released Rust tool, so
+that `go-iroh-dumbpipe` is tested as a program, not only as a protocol.
+Install the pinned version into `interop/target`, which is ignored:
+
+    cargo install --locked --root interop/target/cli dumbpipe@0.39.0
+    IROH_EXAMPLE_RUST_DUMBPIPE_CLI=$PWD/interop/target/cli/bin/dumbpipe \
+        go test ./cmd/go-iroh-dumbpipe/ -run TestInteropCLI -v
+
+The tests pipe stdio each way and tunnel TCP and Unix sockets each way, with
+the Rust binary on one end and the Go code on the other.
+
 Note that both peers bind `127.0.0.1`, so a Go endpoint dialing one must bind
 IPv4 too — an endpoint on `::1` has no route to an IPv4 loopback peer.
