@@ -44,16 +44,20 @@ Both directions are covered for both protocols: Go dialing a Rust server, and
 Rust dialing a Go server. Without the variables the live tests skip and the
 pinned-vector tests still run.
 
-The command-line example is also run against the released Rust tool, so
-that `go-iroh-dumbpipe` is tested as a program, not only as a protocol.
-Install the pinned version into `interop/target`, which is ignored:
+The command-line examples are also run against the released Rust tools, so
+that `go-iroh-sendme` and `go-iroh-dumbpipe` are tested as programs, not only as
+protocols. Install the pinned versions into `interop/target`, which is ignored:
 
-    cargo install --locked --root interop/target/cli dumbpipe@0.39.0
+    cargo install --locked --root interop/target/cli sendme@0.36.0 dumbpipe@0.39.0
+    IROH_EXAMPLE_RUST_SENDME=$PWD/interop/target/cli/bin/sendme \
+        go test ./cmd/go-iroh-sendme/ -run TestInterop -v
     IROH_EXAMPLE_RUST_DUMBPIPE_CLI=$PWD/interop/target/cli/bin/dumbpipe \
         go test ./cmd/go-iroh-dumbpipe/ -run TestInteropCLI -v
 
-The tests pipe stdio each way and tunnel TCP and Unix sockets each way, with
-the Rust binary on one end and the Go code on the other.
+The sendme tests send a directory each way, including an empty file and a file
+that ends mid-chunk, and compare every received byte. The dumbpipe tests pipe
+stdio each way and tunnel TCP and Unix sockets each way, with the Rust binary
+on one end and the Go code on the other.
 
 Note that both peers bind `127.0.0.1`, so a Go endpoint dialing one must bind
 IPv4 too — an endpoint on `::1` has no route to an IPv4 loopback peer.

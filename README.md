@@ -110,7 +110,7 @@ this repository's to claim.
 
 | Example | Shows |
 |---|---|
-| `go-iroh-blobs-transfer` | BAO-verified blob transfer, the `sendme` shape |
+| `go-iroh-blobs-transfer` | BAO-verified blob transfer, the core of `sendme` |
 | `go-iroh-blobs-ranges` | resumable byte-range fetches from a blob |
 | `go-iroh-blobs-store` | an on-disk store, downloads from several providers, tags and GC |
 | `go-iroh-blobs-gateway` | an HTTP Range gateway backed by blobs |
@@ -127,6 +127,7 @@ this repository's to claim.
 | Example | Shows |
 |---|---|
 | `go-iroh-dumbpipe` | n0's `dumbpipe`: stdio, TCP, and Unix-socket pipes over iroh |
+| `go-iroh-sendme` | n0's `sendme`: sending a file or directory as an iroh-blobs collection |
 | `go-iroh-doctor` | relay status, net report, latencies, and selected path |
 | `go-iroh-public-endpoint` | binding a reachable UDP address, and dialing one by ID plus coordinates |
 
@@ -154,10 +155,10 @@ from the environment, and their tests skip with a message naming what to set.
 Flags win over the environment, and `-h` lists each flag with the variable it
 falls back to. Two loopback examples also take configuration:
 `go-iroh-blobs-transfer` takes `-file` (`IROH_EXAMPLE_FILE`) to serve a real file
-instead of its embedded payload. `go-iroh-dumbpipe` runs a loopback demo with
-no arguments and otherwise takes the Rust tool's commands and flags, listed
-under Rust interoperability below; `IROH_SECRET` sets the endpoint's secret
-key, as it does for Rust `dumbpipe`.
+instead of its embedded payload. `go-iroh-dumbpipe` and `go-iroh-sendme` run a
+loopback demo with no arguments and otherwise take the Rust tools' commands and
+flags, listed under Rust interoperability below; `IROH_SECRET` sets the
+endpoint's secret key for both, as it does for the Rust tools.
 
 `go-iroh-doctor` also takes `-live` (`GO_IROH_LIVE_RELAY`), but its default path
 diagnoses an in-process relay and needs no network.
@@ -174,15 +175,24 @@ go run ./cmd/go-iroh-public-endpoint connect -peer-id <id> -peer-ip <host:port>
 Ticket strings and several ALPNs are shared with the Rust implementation, so
 these examples interoperate with n0's tools rather than imitating them.
 
-`go-iroh-dumbpipe` is n0's [`dumbpipe`](https://github.com/n0-computer/dumbpipe)
-0.39: the same commands, the same flags spelled Go's way, the same output, and
-the same wire protocol. Tickets cross between the implementations, with one
-exception noted below. Go listener, Rust dialer:
+`go-iroh-dumbpipe` and `go-iroh-sendme` are n0's
+[`dumbpipe`](https://github.com/n0-computer/dumbpipe) 0.39 and
+[`sendme`](https://github.com/n0-computer/sendme) 0.36: the same commands, the
+same flags spelled Go's way, the same output, and the same wire protocols.
+Tickets cross between the implementations, with one exception noted below. Go
+listener, Rust dialer:
 
 ```sh
 go run ./cmd/go-iroh-dumbpipe listen
 # copy the printed ticket, then in another shell:
 printf 'hello from rust\n' | dumbpipe connect <ticket>
+```
+
+Rust sender, Go receiver:
+
+```sh
+sendme send ./photos
+go run ./cmd/go-iroh-sendme receive <ticket>
 ```
 
 | `dumbpipe` | `go-iroh-dumbpipe` |
@@ -200,9 +210,23 @@ printf 'hello from rust\n' | dumbpipe connect <ticket>
 | `IROH_SECRET` | `IROH_SECRET` |
 | (none) | `-no-relay`, to stay off the public relays |
 
-The differences are small. go-iroh binds one UDP socket, so the Go tool takes
-an IPv4 or an IPv6 bind address but not both. Go's `listen-tcp` and
-`listen-unix` accept every stream on a connection where dumbpipe takes the
+| `sendme` | `go-iroh-sendme` |
+|---|---|
+| `send <path>` | `send <path>` |
+| `receive <ticket>`, `recv` | `receive <ticket>`, `recv` |
+| `--relay default\|disabled\|<url>` | `-relay default\|disabled\|<url>` |
+| `--ticket-type id\|relay-and-addresses\|relay\|addresses` | `-ticket-type`, same values |
+| `--magic-ipv4-addr`, `--magic-ipv6-addr` | `-magic-ipv4-addr` or `-magic-ipv6-addr` |
+| `--format hex\|cid` | `-format hex\|cid` |
+| `-j`, `--jobs` | `-jobs` |
+| `--show-secret`, `-v`, `--no-progress` | `-show-secret`, `-v`, `-no-progress` |
+| `IROH_SECRET` | `IROH_SECRET` |
+
+The differences are small. go-iroh binds one UDP socket, so the Go tools take
+an IPv4 or an IPv6 bind address but not both. There are no progress bars;
+`-no-progress` is accepted and does nothing. Rust sendme 0.36 prints hashes in
+hex for both `--format` values, and so does the Go version. Go's `listen-tcp`
+and `listen-unix` accept every stream on a connection where dumbpipe takes the
 first, so that they also serve dumbpipe's `connect-unix`, which opens a stream
 per local client on one connection.
 
@@ -211,6 +235,14 @@ ticket from Rust `dumbpipe listen` that lists an IPv6 address, which on a
 machine with IPv6 is every one. go-iroh's `endpointticket` writes and expects
 an IPv6 flow label and scope ID after the port; iroh's tickets carry neither.
 Rust reading Go tickets is unaffected while the Go listener binds IPv4.
+`go-iroh-sendme` is unaffected: blob tickets are decoded correctly.
+
+`go-iroh-sendme` carries its own provider rather than using `blobs.ServeBlob`.
+The Rust receiver opens by asking for the root and the last chunk of every
+file, a proof of each file's size. `ServeBlob` answers a request spanning
+several blobs with the root alone, and `blobs.ExtractBlobRange` cannot prove a
+range that starts inside a 16 KiB block, which the last chunk of most files
+does; `bao.go` in the example encodes ranges the way iroh-blobs does.
 
 `-custom-alpn` pipes bytes under any other protocol name and skips the
 dumbpipe handshake, which is netcat over iroh:
@@ -220,16 +252,17 @@ go run ./cmd/go-iroh-dumbpipe listen -custom-alpn utf8:MYAPPV0
 go run ./cmd/go-iroh-dumbpipe connect -custom-alpn utf8:MYAPPV0 <ticket>
 ```
 
-Ported from n0's corpus: `go-iroh-blobs-transfer` (sendme), `go-iroh-blobs-gateway`
-(iroh-gateway), `go-iroh-gossip-kv` (iroh-smol-kv), `go-iroh-ping` (iroh-ping),
+Ported from n0's corpus: `go-iroh-blobs-gateway` (iroh-gateway),
+`go-iroh-gossip-kv` (iroh-smol-kv), `go-iroh-ping` (iroh-ping),
 `go-iroh-automerge` (iroh-automerge), `go-iroh-doctor` (iroh-doctor), and
-`go-iroh-framed-messages`. `go-iroh-docs-sync` speaks `/iroh-sync/1`, and the three
-blobs examples speak `/iroh-bytes/4`.
+`go-iroh-framed-messages`. `go-iroh-docs-sync` speaks `/iroh-sync/1`, and
+`go-iroh-sendme` and the blobs examples speak `/iroh-bytes/4`.
 
-`go-iroh-framed-messages` and `go-iroh-dumbpipe` are checked against the Rust
-implementations rather than described as compatible with them: `interop/` builds
-n0's own `framed-messages` crate, a peer from the published `dumbpipe` crate,
-and the released `dumbpipe` binary, and both directions of each are tested. See
+`go-iroh-framed-messages`, `go-iroh-dumbpipe`, and `go-iroh-sendme` are checked
+against the Rust implementations rather than described as compatible with them:
+`interop/` builds n0's own `framed-messages` crate, a peer from the published
+`dumbpipe` crate, and the released `sendme` and `dumbpipe` binaries, and both
+directions of each are tested. See
 [interop/README.md](interop/README.md).
 
 ## What is not here
