@@ -206,7 +206,7 @@ func newInteropReplica(t *testing.T, ctx context.Context, name string, authorSee
 	}
 	r.router, err = iroh.NewRouter(ep, map[string]iroh.ProtocolHandler{
 		gossip.ALPN: g.Handler(),
-		docs.ALPN:   &docs.Handler{Store: r.store, BlobStore: content, Config: docs.DefaultSyncConfig()},
+		docs.ALPN:   &docs.Handler{Store: r.store, BlobStore: content, Config: docs.DefaultSyncConfig(), Allow: r.allowSync},
 		blobs.ALPN:  blobHandler{content},
 	}, nil)
 	if err != nil {

@@ -41,12 +41,14 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/tmc/go-iroh/blobs"
 	"github.com/tmc/go-iroh/docs"
 	"github.com/tmc/go-iroh/gossip"
 	"github.com/tmc/go-iroh/iroh"
+	"github.com/tmc/go-iroh/key"
 	"github.com/tmc/go-iroh/netaddr"
 )
 
@@ -156,15 +158,16 @@ func run(stdout io.Writer) error {
 // replica is one peer: an endpoint serving both the docs and the gossip
 // protocols, a document store, and a blob store for entry content.
 type replica struct {
-	name    string
-	ep      *iroh.Endpoint
-	router  *iroh.Router
-	gossip  *gossip.Gossip
-	lookup  *iroh.MemoryLookup
-	store   *docs.MemoryStore
-	content *blobs.MemStore
-	author  docs.Author
-	live    *docs.LiveSync
+	name      string
+	ep        *iroh.Endpoint
+	router    *iroh.Router
+	gossip    *gossip.Gossip
+	lookup    *iroh.MemoryLookup
+	store     *docs.MemoryStore
+	content   *blobs.MemStore
+	author    docs.Author
+	live      *docs.LiveSync
+	namespace atomic.Pointer[docs.NamespaceID]
 }
 
 // newReplica binds an endpoint that answers both protocols live sync needs:
@@ -198,6 +201,7 @@ func newReplica(ctx context.Context, name string, authorSeed byte, store *docs.M
 			Store:     store,
 			BlobStore: content,
 			Config:    docs.DefaultSyncConfig(),
+			Allow:     r.allowSync,
 		},
 	}, nil)
 	if err != nil {
@@ -208,7 +212,9 @@ func newReplica(ctx context.Context, name string, authorSeed byte, store *docs.M
 
 // startLiveSync joins the namespace's topic, reconciling with bootstrap first.
 func (r *replica) startLiveSync(ctx context.Context, namespace docs.NamespaceSecret, bootstrap ...netaddr.EndpointAddr) error {
-	live, err := docs.StartLiveSync(ctx, r.ep, r.gossip, namespace.ID(), r.store, docs.LiveSyncOptions{
+	id := namespace.ID()
+	r.namespace.Store(&id)
+	live, err := docs.StartLiveSync(ctx, r.ep, r.gossip, id, r.store, docs.LiveSyncOptions{
 		Bootstrap: bootstrap,
 		Resolver:  r.lookup,
 		BlobStore: r.content,
@@ -222,6 +228,7 @@ func (r *replica) startLiveSync(ctx context.Context, namespace docs.NamespaceSec
 		},
 	})
 	if err != nil {
+		r.namespace.Store(nil)
 		return fmt.Errorf("%s: start live sync: %w", r.name, err)
 	}
 	r.live = live
@@ -237,7 +244,11 @@ func (r *replica) put(ctx context.Context, namespace docs.NamespaceSecret, key, 
 	id := docs.NewRecordIdentifier(namespace.ID(), r.author.ID(), []byte(key))
 	record := docs.NewRecord(hash, uint64(len(value)), uint64(time.Now().UnixMicro()))
 	entry := docs.NewSignedEntry(docs.NewEntry(id, record), namespace, r.author)
-	if outcome := r.store.Put(entry); !outcome.Inserted() {
+	outcome := r.store.Put(entry)
+	if err := outcome.Err(); err != nil {
+		return fmt.Errorf("%s: persist %q: %w", r.name, key, err)
+	}
+	if !outcome.Inserted() {
 		return fmt.Errorf("%s: put %q: an equal or newer entry is already stored", r.name, key)
 	}
 	return nil
@@ -261,7 +272,13 @@ func (r *replica) await(ctx context.Context, n int) error {
 	}
 }
 
+func (r *replica) allowSync(namespace docs.NamespaceID, _ key.EndpointID) bool {
+	active := r.namespace.Load()
+	return active != nil && *active == namespace
+}
+
 func (r *replica) close(ctx context.Context) {
+	r.namespace.Store(nil)
 	if r.live != nil {
 		r.live.Close()
 	}

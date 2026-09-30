@@ -54,6 +54,7 @@ import (
 	"github.com/tmc/go-iroh/blobs"
 	"github.com/tmc/go-iroh/docs"
 	"github.com/tmc/go-iroh/iroh"
+	"github.com/tmc/go-iroh/key"
 	"github.com/tmc/go-iroh/netaddr"
 )
 
@@ -99,6 +100,9 @@ func (r *replica) put(ctx context.Context, namespace docs.NamespaceSecret, key, 
 	id := docs.NewRecordIdentifier(namespace.ID(), r.author.ID(), []byte(key))
 	entry := docs.NewSignedEntry(docs.NewEntry(id, docs.NewRecord(hash, uint64(len(value)), timestamp)), namespace, r.author)
 	outcome := r.entries.Put(entry)
+	if err := outcome.Err(); err != nil {
+		return outcome, fmt.Errorf("%s: persist %q: %w", r.name, key, err)
+	}
 	if !outcome.Inserted() {
 		return outcome, fmt.Errorf("%s: put %q: an equal or newer entry is already stored", r.name, key)
 	}
@@ -156,6 +160,7 @@ func run(stdout io.Writer) error {
 			Store:     alice.entries,
 			BlobStore: alice.content,
 			Config:    docs.DefaultSyncConfig(),
+			Allow:     func(ns docs.NamespaceID, _ key.EndpointID) bool { return ns == namespace.ID() },
 		},
 	}, nil)
 	if err != nil {

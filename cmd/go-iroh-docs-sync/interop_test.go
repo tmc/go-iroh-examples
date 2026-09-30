@@ -60,7 +60,7 @@ func TestInteropGoSyncsWithRust(t *testing.T) {
 	defer cancel()
 
 	namespace := docs.NewNamespaceSecret(seed(0xd0))
-	g := newInteropReplica(t, ctx, "go", 0xa1)
+	g := newInteropReplica(t, ctx, "go", 0xa1, namespace.ID())
 	g.write(t, ctx, namespace, goWrites)
 	rust := startDocsPeer(t, ctx, bin, namespace, docs.NewAuthor(seed(0xb2)), rustWrites)
 
@@ -86,7 +86,7 @@ func TestInteropRustSyncsWithGo(t *testing.T) {
 	defer cancel()
 
 	namespace := docs.NewNamespaceSecret(seed(0xd0))
-	g := newInteropReplica(t, ctx, "go", 0xa1)
+	g := newInteropReplica(t, ctx, "go", 0xa1, namespace.ID())
 	g.write(t, ctx, namespace, goWrites)
 	rust := startDocsPeer(t, ctx, bin, namespace, docs.NewAuthor(seed(0xb2)), rustWrites)
 
@@ -179,7 +179,7 @@ type interopReplica struct {
 	router *iroh.Router
 }
 
-func newInteropReplica(t *testing.T, ctx context.Context, name string, authorSeed byte) *interopReplica {
+func newInteropReplica(t *testing.T, ctx context.Context, name string, authorSeed byte, namespace docs.NamespaceID) *interopReplica {
 	t.Helper()
 	ep, err := iroh.Bind(ctx,
 		iroh.WithBindAddr(netip.AddrPortFrom(netip.AddrFrom4([4]byte{127, 0, 0, 1}), 0)),
@@ -194,7 +194,7 @@ func newInteropReplica(t *testing.T, ctx context.Context, name string, authorSee
 	}
 	r := &replica{name: name, ep: ep, entries: docs.NewMemoryStore(), content: content, author: docs.NewAuthor(seed(authorSeed))}
 	router, err := iroh.NewRouter(ep, map[string]iroh.ProtocolHandler{
-		docs.ALPN:  &docs.Handler{Store: r.entries, BlobStore: r.content, Config: docs.DefaultSyncConfig()},
+		docs.ALPN:  &docs.Handler{Store: r.entries, BlobStore: r.content, Config: docs.DefaultSyncConfig(), Allow: func(ns docs.NamespaceID, _ key.EndpointID) bool { return ns == namespace }},
 		blobs.ALPN: blobHandler{r.content},
 	}, nil)
 	if err != nil {
