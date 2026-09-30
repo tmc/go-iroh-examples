@@ -161,3 +161,27 @@ gossip-topic each side must receive the other's broadcast, and for gossip-kv
 each side's signed write must land in the other's store. `kv-vector`'s output
 is pinned in `cmd/go-iroh-gossip-kv/interop_test.go`, so the update encoding
 is checked without Rust too.
+
+## mDNS discovery
+
+`interop/mdns` is a separate crate, so its dependencies do not touch the
+main one. It builds `mdns_peer` on n0's `iroh-mdns-address-lookup` 0.6.0
+(swarm-discovery 0.6.3, iroh 1.1.0), which is where iroh's mDNS lookup lives
+since 1.0. Every endpoint has relays disabled and mDNS as its only address
+lookup, on the default service name `irohv1`, so a dial by ID alone succeeds
+only if mDNS supplied the address:
+
+    mdns_peer listen          print "ID <id>", then echo one stream
+    mdns_peer dial <id>       dial <id> by ID alone and echo "mdns hello"
+    mdns_peer announce        announce two ports, a relay URL and user data
+    mdns_peer resolve <id>    print what mDNS resolves for <id>
+
+    cargo build --manifest-path interop/mdns/Cargo.toml
+    IROH_EXAMPLE_RUST_MDNS=$PWD/interop/mdns/target/debug/mdns_peer \
+        go test ./cmd/go-iroh-mdns-discovery/ -run 'Rust' -v
+
+The tests need UDP 5353 and a multicast-capable default interface. Rust
+multicasts on the default interface only, and the two processes hear each
+other through multicast loopback. With go-iroh v0.2.1, Go finds and dials
+Rust, but Rust cannot resolve Go and Go keeps only one of Rust's ports; the
+test comments name the go-iroh bugs.
