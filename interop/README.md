@@ -61,3 +61,29 @@ on one end and the Go code on the other.
 
 Note that both peers bind `127.0.0.1`, so a Go endpoint dialing one must bind
 IPv4 too — an endpoint on `::1` has no route to an IPv4 loopback peer.
+
+## iroh-ping
+
+The crates from here on are standalone, each with its own `Cargo.lock`, so
+one example's dependencies never move another's. The commands below build
+each into its own `target`; pointing `CARGO_TARGET_DIR` at one shared
+directory instead lets them compile iroh once (adjust the binary paths to
+match).
+
+`ping/` is a standalone crate, built separately from the one above, holding a
+peer made from n0's `iroh-ping` crate (1.0.0, on iroh 1.x). Its listener is
+the crate's `Ping` handler behind a `Router` and its dialer is `Ping::ping`,
+both of which assert on the PING and PONG bytes, so `go-iroh-ping` is checked
+against upstream's code rather than a restatement of it.
+
+    ping_peer vectors                 print iroh_ping::ALPN as hex
+    ping_peer listen                  print "ADDR <id> <ip:port>", serve ping
+    ping_peer connect <id> <ip:port>  ping that endpoint, print "PONG <rtt>"
+
+To build it and run the live tests:
+
+    cargo build --manifest-path interop/ping/Cargo.toml
+    IROH_EXAMPLE_RUST_PING=$PWD/interop/ping/target/debug/ping_peer \
+        go test ./cmd/go-iroh-ping/ -run 'TestInterop|TestRust' -v
+
+Without the variable only the pinned ALPN test runs.

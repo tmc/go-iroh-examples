@@ -5,3 +5,4 @@ go.work.sum
 
 # Build output from the Rust interoperability harness.
 interop/target/
+interop/*/target/
