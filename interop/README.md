@@ -87,3 +87,26 @@ To build it and run the live tests:
         go test ./cmd/go-iroh-ping/ -run 'TestInterop|TestRust' -v
 
 Without the variable only the pinned ALPN test runs.
+
+## Automerge
+
+`automerge/` is a separate crate for `go-iroh-automerge`, which ports n0's
+[iroh-automerge](https://github.com/n0-computer/iroh-examples/tree/main/iroh-automerge)
+(ALPN `iroh/automerge/2`, each sync message behind an eight-byte
+little-endian length, zero meaning "done"). iroh-automerge is a binary crate,
+so cargo will fetch it as a git dependency but not link it (hence the
+"missing a lib target" warning); `build.rs` copies its `src/protocol.rs`
+from cargo's checkout at the commit `automerge/Cargo.lock` records, and the
+peer compiles that file unchanged. Rust automerge is 0.7.4, as upstream's
+lock has it; the Go side's automerge-go embeds Rust automerge 0.5.0.
+
+    automerge_peer listen                  print "ADDR <id> <ip:port>", respond to one sync
+    automerge_peer connect <id> <ip:port>  dial that address and initiate a sync
+    automerge_peer vectors                 print the ALPN and an empty document's first sync message
+
+Each side starts with its own keys plus a conflicting `shared` key; the tests
+check that after one sync both print the same seven-key document.
+
+    cargo build --manifest-path interop/automerge/Cargo.toml
+    IROH_EXAMPLE_RUST_AUTOMERGE=$PWD/interop/automerge/target/debug/automerge_peer \
+        go test ./cmd/go-iroh-automerge/ -run 'TestInterop|TestRust' -v
