@@ -185,3 +185,18 @@ multicasts on the default interface only, and the two processes hear each
 other through multicast loopback. With go-iroh v0.2.1, Go finds and dials
 Rust, but Rust cannot resolve Go and Go keeps only one of Rust's ports; the
 test comments name the go-iroh bugs.
+
+## iroh-docs
+
+`docs/` is a standalone crate whose `docs_peer` is an iroh-docs node
+(iroh-docs 0.101, iroh-blobs 0.103, iroh-gossip 0.101 on iroh 1.x, in-memory
+stores). It writes the entries it is given, serves `/iroh-sync/1`, gossip and
+blobs on `127.0.0.1`, and takes `sync`, `put` and `dump` commands on stdin.
+The tests for `go-iroh-docs-sync` and `go-iroh-docs-live-sync` drive it:
+
+    cargo build --manifest-path interop/docs/Cargo.toml
+    IROH_EXAMPLE_RUST_DOCS=$PWD/interop/docs/target/debug/docs_peer \
+        go test ./cmd/go-iroh-docs-sync/ ./cmd/go-iroh-docs-live-sync/ -run TestInterop -v
+
+With go-iroh v0.2.1 only Rust syncing from Go passes; the other directions
+skip, and the skip messages name the go-iroh bugs.

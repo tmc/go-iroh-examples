@@ -1,0 +1,18 @@
+[package]
+name = "go-iroh-interop-docs"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+futures-lite = "2"
+hex = "0.4"
+iroh = "1.0"
+iroh-blobs = "0.103"
+iroh-docs = "0.101"
+iroh-gossip = "0.101"
+irpc = "0.17"
+postcard = { version = "1.1", features = ["use-std"] }
+tokio = { version = "1.46", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
