@@ -135,3 +135,29 @@ To run them:
     IROH_EXAMPLE_RUST_BLOBS=$PWD/interop/blobs/target/debug/blobs_peer \
         go test ./cmd/go-iroh-blobs-transfer/ ./cmd/go-iroh-blobs-gateway/ \
             ./cmd/go-iroh-tickets/ ./cmd/go-iroh-key-exchange/ -run 'Interop|Rust' -v
+
+## Gossip
+
+`gossip/` is a separate crate, so iroh-gossip and iroh-smol-kv build only when
+these tests are wanted. Both come from crates.io (`iroh-gossip` 0.101,
+`iroh-smol-kv` 0.4, on iroh 1.1); `gossip/Cargo.lock` records the versions
+verified. One binary, `gossip_peer`, binds `127.0.0.1` with relays disabled
+and prints `ADDR <id> <ip:port>` then `READY`:
+
+    gossip_peer topic <topic-hex> [<id> <ip:port>]  an iroh-gossip topic
+    gossip_peer kv <topic-hex> [<id> <ip:port>]     an iroh-smol-kv store on it
+    gossip_peer kv-vector                           one smol-kv message, as hex
+
+The live modes join the optional bootstrap peer, report `UP`, `RECV` and (for
+kv) `ENTRY` lines on stdout, and take `join`, `broadcast` and `put` commands
+on stdin. The tests wait on those lines rather than sleeping.
+
+    cargo build --manifest-path interop/gossip/Cargo.toml
+    IROH_EXAMPLE_RUST_GOSSIP=$PWD/interop/gossip/target/debug/gossip_peer \
+        go test ./cmd/go-iroh-gossip-topic/ ./cmd/go-iroh-gossip-kv/ -run TestInterop -v
+
+Each test runs both ways round, Rust joining Go and Go joining Rust: for
+gossip-topic each side must receive the other's broadcast, and for gossip-kv
+each side's signed write must land in the other's store. `kv-vector`'s output
+is pinned in `cmd/go-iroh-gossip-kv/interop_test.go`, so the update encoding
+is checked without Rust too.

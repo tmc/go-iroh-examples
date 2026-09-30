@@ -176,6 +176,11 @@ func newNode(ctx context.Context, name string, names map[key.EndpointID]string) 
 	if err != nil {
 		return nil, err
 	}
+	return serve(ctx, ep, name, names)
+}
+
+// serve runs gossip on an endpoint that is already bound.
+func serve(ctx context.Context, ep *iroh.Endpoint, name string, names map[key.EndpointID]string) (*node, error) {
 	g := gossip.NewGossip(ep)
 	router, err := iroh.NewRouter(ep, map[string]iroh.ProtocolHandler{gossip.ALPN: g.Handler()}, nil)
 	if err != nil {
