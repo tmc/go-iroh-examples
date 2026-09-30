@@ -110,3 +110,28 @@ check that after one sync both print the same seven-key document.
     cargo build --manifest-path interop/automerge/Cargo.toml
     IROH_EXAMPLE_RUST_AUTOMERGE=$PWD/interop/automerge/target/debug/automerge_peer \
         go test ./cmd/go-iroh-automerge/ -run 'TestInterop|TestRust' -v
+
+## iroh-blobs, tickets and key exchange
+
+`blobs/` is a separate crate with one binary, `blobs_peer`, for the four
+examples whose claims rest on iroh-blobs 0.103, iroh-tickets 1.0 and postcard
+1.1, on the same iroh (1.1.0) that `Cargo.lock` pins:
+
+- `go-iroh-blobs-transfer`: iroh-blobs' `get_blob` fetches from the example's
+  provider, and the example fetches from iroh-blobs' `BlobsProtocol`, for blobs
+  of one partial chunk, one crossing a 16 KiB block, and several blocks.
+- `go-iroh-blobs-gateway`: all four HTTP routes, and Range requests, in front
+  of a Rust provider, reached by address and by Rust-printed blob tickets.
+- `go-iroh-tickets`: each side dials a ticket the other printed. IPv4 passes;
+  the IPv6 cases skip, naming go-iroh's endpointticket IPv6 bug.
+- `go-iroh-key-exchange`: the request and report postcard encodings are pinned
+  against `blobs_peer kx-vectors` (no Rust needed), and the exchange runs live
+  against Rust endpoints on stock iroh (ring, classical groups only) and on
+  aws-lc-rs providers offering only X25519 or only X25519MLKEM768.
+
+To run them:
+
+    cargo build --manifest-path interop/blobs/Cargo.toml
+    IROH_EXAMPLE_RUST_BLOBS=$PWD/interop/blobs/target/debug/blobs_peer \
+        go test ./cmd/go-iroh-blobs-transfer/ ./cmd/go-iroh-blobs-gateway/ \
+            ./cmd/go-iroh-tickets/ ./cmd/go-iroh-key-exchange/ -run 'Interop|Rust' -v

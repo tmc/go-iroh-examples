@@ -1,0 +1,17 @@
+[package]
+name = "go-iroh-interop-blobs"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+iroh = "1.0"
+iroh-blobs = "0.103"
+iroh-tickets = "1.0"
+postcard = { version = "1.1", features = ["use-std"] }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.46", features = ["full"] }
+# For go-iroh-key-exchange: aws-lc-rs is the rustls provider that has
+# X25519MLKEM768. iroh itself stays on its default ring provider.
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
