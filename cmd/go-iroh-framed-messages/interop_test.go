@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -174,7 +175,7 @@ func TestInteropRustDialsGo(t *testing.T) {
 	defer server.Shutdown(context.Background())
 
 	router, err := iroh.NewRouter(server, map[string]iroh.ProtocolHandler{
-		alpn: chessHandler{},
+		alpn: chessHandler{io.Discard},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
