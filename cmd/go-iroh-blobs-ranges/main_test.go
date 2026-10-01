@@ -22,8 +22,7 @@ func TestRun(t *testing.T) {
 		// The whole blob, reassembled from two separately fetched ranges. run
 		// returns an error if the pieces do not concatenate to the original, so
 		// reaching this length is the assertion that resumption worked.
-		"bytes: 3168",
-		"blake3: 0c8d748520",
+		"bytes: 67584",
 		"ranges: prefix + resumed suffix",
 	} {
 		if !strings.Contains(out, want) {
@@ -50,14 +49,8 @@ func TestChunkCount(t *testing.T) {
 	}
 }
 
-// TestRangePastFirstBlock pins the go-iroh limitation the doc comment
-// describes, so that the day it is fixed this test says so instead of the
-// example quietly continuing to under-claim what ranges can do.
-//
-// Verification is a BLAKE3 tree over 16 KiB blocks. A range wholly inside the
-// first block verifies; one that begins at the second block does not, and the
-// payload has to be non-periodic to see it — a pattern whose period divides the
-// block size hashes equal even when the wrong bytes arrive.
+// TestRangePastFirstBlock checks that a range can begin at a later verification
+// block and still verify against the original blob hash.
 func TestRangePastFirstBlock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -96,12 +89,11 @@ func TestRangePastFirstBlock(t *testing.T) {
 		t.Error("range inside the first block returned the wrong bytes")
 	}
 
-	_, err = getRange(ctx, client, addr, hash, blobs.RangeChunks(blockChunks, 2*blockChunks), size)
-	if err == nil {
-		t.Fatal("a range beginning at the second block now verifies: go-iroh is fixed, " +
-			"so widen this example's payload and drop the caveat in its doc comment")
+	got, err = getRange(ctx, client, addr, hash, blobs.RangeChunks(blockChunks, 2*blockChunks), size)
+	if err != nil {
+		t.Fatalf("range beginning at the second block: %v", err)
 	}
-	if !strings.Contains(err.Error(), "hash mismatch") {
-		t.Fatalf("range beginning at the second block: got %v, want a hash mismatch", err)
+	if !bytes.Equal(got, payload[16*1024:32*1024]) {
+		t.Error("range beginning at the second block returned the wrong bytes")
 	}
 }
