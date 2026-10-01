@@ -237,13 +237,6 @@ an IPv6 flow label and scope ID after the port; iroh's tickets carry neither.
 Rust reading Go tickets is unaffected while the Go listener binds IPv4.
 `go-iroh-sendme` is unaffected: blob tickets are decoded correctly.
 
-`go-iroh-sendme` carries its own provider rather than using `blobs.ServeBlob`.
-The Rust receiver opens by asking for the root and the last chunk of every
-file, a proof of each file's size. `ServeBlob` answers a request spanning
-several blobs with the root alone, and `blobs.ExtractBlobRange` cannot prove a
-range that starts inside a 16 KiB block, which the last chunk of most files
-does; `bao.go` in the example encodes ranges the way iroh-blobs does.
-
 `-custom-alpn` pipes bytes under any other protocol name and skips the
 dumbpipe handshake, which is netcat over iroh:
 

@@ -18,12 +18,8 @@
 // photos/a.jpg and a receiver creates a photos directory.
 //
 // The Rust receiver opens with one request for the root and the last chunk of
-// every child: a proof of each file's size, fetched before any content. The
-// provider in this program answers requests itself ([serveRequest]), because
-// [blobs.ServeBlob] answers a request for ranges of several blobs with the
-// root alone, and [blobs.ExtractBlobRange] cannot prove a range that starts
-// or ends inside a 16 KiB block, which the last chunk of most files does
-// (see bao.go).
+// every child: a proof of each file's size, fetched before any content.
+// [blobs.ServeBlob] answers it.
 //
 // With no arguments it sends a small directory to itself over loopback, so
 // that "go run ./cmd/go-iroh-sendme" is a complete demo. Otherwise:
@@ -523,7 +519,7 @@ func serve(ctx context.Context, ep *iroh.Endpoint, store blobs.Store) {
 					return
 				}
 				wg.Go(func() {
-					if err := serveRequest(ctx, s, store); err != nil {
+					if err := blobs.ServeBlob(ctx, s, store); err != nil {
 						s.CancelRead(1)
 						s.CancelWrite(1)
 					}
@@ -531,84 +527,6 @@ func serve(ctx context.Context, ep *iroh.Endpoint, store blobs.Store) {
 			}
 		})
 	}
-}
-
-// serveRequest answers one iroh-blobs GET request.
-//
-// A GET names a root and a ChunkRangesSeq: the ranges wanted of the root, then
-// of each child in turn. The response is each selected blob's size and a BAO
-// proof of the selected ranges, in that order. A range starting past the end
-// of a blob selects its last chunk, which proves the blob's size; sendme's
-// receiver asks for exactly that of every child before it asks for content.
-func serveRequest(ctx context.Context, s *iroh.Stream, store blobs.Store) error {
-	b, err := io.ReadAll(io.LimitReader(s, 1<<16))
-	if err != nil {
-		return err
-	}
-	req, err := blobs.DecodeRequestBytes(b)
-	if err != nil {
-		return err
-	}
-	if req.Type != blobs.RequestGet || req.Get == nil {
-		return errors.New("unsupported request")
-	}
-	seq := req.Get.Ranges
-	if err := writeRanges(ctx, s, store, req.Get.Hash, seq.At(0)); err != nil {
-		return err
-	}
-	if wantsChildren(seq) {
-		root, err := blobs.ReadBlob(ctx, store, req.Get.Hash)
-		if err != nil {
-			return err
-		}
-		hs, err := blobs.ParseHashSequence(root)
-		if err != nil {
-			return err
-		}
-		for i, h := range hs.Hashes() {
-			if err := writeRanges(ctx, s, store, h, seq.At(uint64(i)+1)); err != nil {
-				return err
-			}
-		}
-	}
-	return s.CloseWrite()
-}
-
-// wantsChildren reports whether seq selects anything after the root. The last
-// entry of a sequence repeats forever, so a request for everything is one
-// entry at offset 0.
-func wantsChildren(seq blobs.ChunkRangesSeq) bool {
-	es := seq.Entries()
-	for i, e := range es {
-		if !e.Ranges.IsEmpty() && (e.Offset > 0 || i == len(es)-1) {
-			return true
-		}
-	}
-	return false
-}
-
-// writeRanges writes the response for one blob: its size and a proof of the
-// requested ranges. See encodeRanges.
-func writeRanges(ctx context.Context, w io.Writer, store blobs.Store, h blobs.Hash, r blobs.ChunkRanges) error {
-	if r.IsEmpty() {
-		return nil
-	}
-	blob, err := store.Open(ctx, h)
-	if err != nil {
-		return err
-	}
-	size, _ := blob.Size()
-	data, err := blob.DataReader(ctx)
-	if err != nil {
-		return err
-	}
-	defer data.Close()
-	ob, err := blob.Outboard(ctx)
-	if err != nil {
-		return err
-	}
-	defer ob.Close()
-	return encodeRanges(w, h, size, data, ob, r)
 }
 
 // receive fetches the collection a ticket names and writes its files under dst.
