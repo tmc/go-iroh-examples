@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/automerge/automerge-go v0.0.0-20241030180337-6fb4f2d08244
-	github.com/tmc/go-iroh v0.2.1
+	github.com/tmc/go-iroh v0.3.0
 )
 
 require (
