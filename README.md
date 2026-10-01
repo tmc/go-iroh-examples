@@ -230,13 +230,6 @@ and `listen-unix` accept every stream on a connection where dumbpipe takes the
 first, so that they also serve dumbpipe's `connect-unix`, which opens a stream
 per local client on one connection.
 
-The exception: with go-iroh v0.2.1, `go-iroh-dumbpipe connect` cannot read a
-ticket from Rust `dumbpipe listen` that lists an IPv6 address, which on a
-machine with IPv6 is every one. go-iroh's `endpointticket` writes and expects
-an IPv6 flow label and scope ID after the port; iroh's tickets carry neither.
-Rust reading Go tickets is unaffected while the Go listener binds IPv4.
-`go-iroh-sendme` is unaffected: blob tickets are decoded correctly.
-
 `-custom-alpn` pipes bytes under any other protocol name and skips the
 dumbpipe handshake, which is netcat over iroh:
 

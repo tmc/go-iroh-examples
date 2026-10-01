@@ -179,10 +179,7 @@ func TestInteropGoDialsRust(t *testing.T) {
 // TestInteropRustDialsGo has a Rust endpoint dial this Go endpoint knowing
 // only its ID, which it can resolve only through Go's mDNS announcement.
 //
-// With go-iroh v0.2.1 it fails: Rust hears nothing it can use. Go writes the
-// A and AAAA records in the answer section, where swarm-discovery does not
-// look for them, and an announcement with no relay URL or user data carries
-// an empty TXT record, which hickory-proto rejects outright.
+// The Rust endpoint resolves the address from Go's mDNS announcement.
 func TestInteropRustDialsGo(t *testing.T) {
 	bin := mdnsPeer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -244,8 +241,7 @@ const (
 // TestInteropGoResolvesRust resolves a Rust announcement that carries two
 // ports, a relay URL, and user data.
 //
-// With go-iroh v0.2.1 it fails on the addresses: parseAnnouncement keeps one
-// SRV record per instance, so only the last port survives.
+// This checks that Go retains every address advertised by Rust.
 func TestInteropGoResolvesRust(t *testing.T) {
 	bin := mdnsPeer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -289,8 +285,8 @@ func TestInteropGoResolvesRust(t *testing.T) {
 // TestInteropRustResolvesGo has Rust resolve a Go announcement that carries an
 // address, a relay URL, and user data.
 //
-// With go-iroh v0.2.1 it fails because Go writes the A record in the answer
-// section; see TestInteropRustDialsGo.
+// This checks that Rust resolves the address, relay URL, and user data from
+// Go's mDNS announcement.
 func TestInteropRustResolvesGo(t *testing.T) {
 	bin := mdnsPeer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)

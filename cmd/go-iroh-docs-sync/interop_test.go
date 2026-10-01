@@ -48,12 +48,8 @@ var (
 // TestInteropGoSyncsWithRust has the Go replica initiate a sync with a Rust
 // iroh-docs node, through the example's syncOnce.
 //
-// It skips on go-iroh v0.2.1: [docs.Sync] opens the stream with a sync-report
-// frame (message variant 3) that the Rust codec does not have, since
-// iroh-docs's net::codec::Message is Init, Sync and Abort only. Rust fails the
-// deserialization and closes the stream, and Go reports "read sync report:
-// EOF". The opposite direction works because the Go handler still accepts a
-// bare Init.
+// This checks the Go sync initiator against iroh-docs' Init, Sync and Abort
+// wire messages.
 func TestInteropGoSyncsWithRust(t *testing.T) {
 	bin := docsPeerBin(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -66,9 +62,6 @@ func TestInteropGoSyncsWithRust(t *testing.T) {
 
 	ticket := docs.NewTicket(docs.NewWriteCapability(namespace), []netaddr.EndpointAddr{rust.addr})
 	out, err := syncOnce(ctx, g.replica, ticket)
-	if err != nil && strings.Contains(err.Error(), "read sync report: EOF") {
-		t.Skipf("go-iroh docs.Sync sends a sync-report frame iroh-docs cannot decode: %v", err)
-	}
 	if err != nil {
 		t.Fatalf("sync with rust: %v", err)
 	}

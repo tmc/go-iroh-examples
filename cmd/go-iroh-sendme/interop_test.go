@@ -29,7 +29,12 @@ import (
 
 // sendmeBin is the Rust sendme binary. Build it with:
 //
-//	cargo install --locked --root interop/target/cli sendme@0.36.0
+//	cargo install --locked --no-default-features --root interop/target/cli sendme@0.36.0
+//
+// The default "clipboard" feature makes "sendme send" read key presses from
+// the terminal, and with no terminal it aborts right after printing its
+// ticket (fixed upstream after 0.36.0 by n0-computer/sendme#134). The
+// feature only adds that key handling; sending and receiving are unchanged.
 func sendmeBin(t *testing.T) string {
 	t.Helper()
 	path := os.Getenv("IROH_EXAMPLE_RUST_SENDME")
@@ -173,9 +178,12 @@ func TestInteropGoReceivesFromRust(t *testing.T) {
 	if ticket == "" {
 		t.Fatalf("sendme send printed no ticket: %v", sc.Err())
 	}
+	exited := make(chan struct{})
 	go func() {
 		for sc.Scan() {
 		}
+		close(exited)
+		cancel()
 	}()
 
 	if bt, err := blobs.ParseTicket(ticket); err == nil {
@@ -187,6 +195,11 @@ func TestInteropGoReceivesFromRust(t *testing.T) {
 	}
 	var out bytes.Buffer
 	if err := receive(ctx, ticket, dst, o, &out, &out); err != nil {
+		select {
+		case <-exited:
+			t.Fatalf("sendme send exited during the transfer; was it built with the clipboard feature? (see sendmeBin)")
+		default:
+		}
 		t.Fatalf("receive: %v\n%s", err, out.String())
 	}
 	t.Logf("go receiver:\n%s", out.String())

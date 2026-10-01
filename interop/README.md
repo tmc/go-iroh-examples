@@ -48,7 +48,8 @@ The command-line examples are also run against the released Rust tools, so
 that `go-iroh-sendme` and `go-iroh-dumbpipe` are tested as programs, not only as
 protocols. Install the pinned versions into `interop/target`, which is ignored:
 
-    cargo install --locked --root interop/target/cli sendme@0.36.0 dumbpipe@0.39.0
+    cargo install --locked --no-default-features --root interop/target/cli sendme@0.36.0
+    cargo install --locked --root interop/target/cli dumbpipe@0.39.0
     IROH_EXAMPLE_RUST_SENDME=$PWD/interop/target/cli/bin/sendme \
         go test ./cmd/go-iroh-sendme/ -run TestInterop -v
     IROH_EXAMPLE_RUST_DUMBPIPE_CLI=$PWD/interop/target/cli/bin/dumbpipe \
@@ -58,6 +59,11 @@ The sendme tests send a directory each way, including an empty file and a file
 that ends mid-chunk, and compare every received byte. The dumbpipe tests pipe
 stdio each way and tunnel TCP and Unix sockets each way, with the Rust binary
 on one end and the Go code on the other.
+
+sendme is built without its default clipboard feature. With it, `sendme send`
+reads key presses from the terminal and, run with no terminal as the test runs
+it, aborts right after printing its ticket, so the Go receiver times out
+dialing a closed port.
 
 Note that both peers bind `127.0.0.1`, so a Go endpoint dialing one must bind
 IPv4 too — an endpoint on `::1` has no route to an IPv4 loopback peer.
@@ -115,15 +121,15 @@ check that after one sync both print the same seven-key document.
 
 `blobs/` is a separate crate with one binary, `blobs_peer`, for the four
 examples whose claims rest on iroh-blobs 0.103, iroh-tickets 1.0 and postcard
-1.1, on the same iroh (1.1.0) that `Cargo.lock` pins:
+1.1, on the same iroh (1.3.0) that `Cargo.lock` pins:
 
 - `go-iroh-blobs-transfer`: iroh-blobs' `get_blob` fetches from the example's
   provider, and the example fetches from iroh-blobs' `BlobsProtocol`, for blobs
   of one partial chunk, one crossing a 16 KiB block, and several blocks.
 - `go-iroh-blobs-gateway`: all four HTTP routes, and Range requests, in front
   of a Rust provider, reached by address and by Rust-printed blob tickets.
-- `go-iroh-tickets`: each side dials a ticket the other printed. IPv4 passes;
-  the IPv6 cases skip, naming go-iroh's endpointticket IPv6 bug.
+- `go-iroh-tickets`: each side dials a ticket the other printed, over IPv4
+  and IPv6, including a Go ticket listing two IPv6 addresses.
 - `go-iroh-key-exchange`: the request and report postcard encodings are pinned
   against `blobs_peer kx-vectors` (no Rust needed), and the exchange runs live
   against Rust endpoints on stock iroh (ring, classical groups only) and on
@@ -140,7 +146,7 @@ To run them:
 
 `gossip/` is a separate crate, so iroh-gossip and iroh-smol-kv build only when
 these tests are wanted. Both come from crates.io (`iroh-gossip` 0.101,
-`iroh-smol-kv` 0.4, on iroh 1.1); `gossip/Cargo.lock` records the versions
+`iroh-smol-kv` 0.4, on iroh 1.3); `gossip/Cargo.lock` records the versions
 verified. One binary, `gossip_peer`, binds `127.0.0.1` with relays disabled
 and prints `ADDR <id> <ip:port>` then `READY`:
 
@@ -166,7 +172,7 @@ is checked without Rust too.
 
 `interop/mdns` is a separate crate, so its dependencies do not touch the
 main one. It builds `mdns_peer` on n0's `iroh-mdns-address-lookup` 0.6.0
-(swarm-discovery 0.6.3, iroh 1.1.0), which is where iroh's mDNS lookup lives
+(swarm-discovery 0.6.3, iroh 1.3.0), which is where iroh's mDNS lookup lives
 since 1.0. Every endpoint has relays disabled and mDNS as its only address
 lookup, on the default service name `irohv1`, so a dial by ID alone succeeds
 only if mDNS supplied the address:
@@ -182,14 +188,14 @@ only if mDNS supplied the address:
 
 The tests need UDP 5353 and a multicast-capable default interface. Rust
 multicasts on the default interface only, and the two processes hear each
-other through multicast loopback. With go-iroh v0.2.1, Go finds and dials
-Rust, but Rust cannot resolve Go and Go keeps only one of Rust's ports; the
-test comments name the go-iroh bugs.
+other through multicast loopback. With go-iroh v0.3.0, all four
+directions pass: either side can resolve and dial the other, and Go retains
+both Rust-advertised ports.
 
 ## iroh-docs
 
 `docs/` is a standalone crate whose `docs_peer` is an iroh-docs node
-(iroh-docs 0.101, iroh-blobs 0.103, iroh-gossip 0.101 on iroh 1.x, in-memory
+(iroh-docs 0.101, iroh-blobs 0.103, iroh-gossip 0.101 on iroh 1.1.0, in-memory
 stores). It writes the entries it is given, serves `/iroh-sync/1`, gossip and
 blobs on `127.0.0.1`, and takes `sync`, `put` and `dump` commands on stdin.
 The tests for `go-iroh-docs-sync` and `go-iroh-docs-live-sync` drive it:
@@ -198,5 +204,9 @@ The tests for `go-iroh-docs-sync` and `go-iroh-docs-live-sync` drive it:
     IROH_EXAMPLE_RUST_DOCS=$PWD/interop/docs/target/debug/docs_peer \
         go test ./cmd/go-iroh-docs-sync/ ./cmd/go-iroh-docs-live-sync/ -run TestInterop -v
 
-With go-iroh v0.2.1 only Rust syncing from Go passes; the other directions
-skip, and the skip messages name the go-iroh bugs.
+With go-iroh v0.3.0, one-shot sync and live sync pass in both
+directions.
+
+`docs/Cargo.lock` stays on iroh 1.1.0 while the other crates are on 1.3.0:
+on iroh 1.3.0, iroh-docs 0.101.0 fails to close its own sync connections
+("Failed to close connection"), Rust to Rust as well as with Go.

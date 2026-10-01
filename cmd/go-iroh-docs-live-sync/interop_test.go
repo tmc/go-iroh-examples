@@ -42,12 +42,8 @@ import (
 // the initial sync catches both up and that live writes on each side then
 // reach the other over gossip, content included.
 //
-// Whichever side joins, the reconciliation that succeeds is Rust's. When Go
-// initiates, as it does for its bootstrap peers and for each new gossip
-// neighbor, go-iroh v0.2.1 sends a sync-report frame iroh-docs cannot decode
-// (see go-iroh-docs-sync's TestInteropGoSyncsWithRust); those attempts fail
-// and are reported on stderr, and Rust's own sync on NeighborUp catches both
-// replicas up.
+// The two join orders cover sync initiation in both directions as well as
+// content transfer for reconciled entries.
 func TestInteropLiveSyncWithRust(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -62,18 +58,6 @@ func TestInteropLiveSyncWithRust(t *testing.T) {
 
 func testLiveSync(t *testing.T, goJoins bool) {
 	bin := docsPeerBin(t)
-	if !goJoins {
-		// When Rust dials Go and Go then dials Rust back, as live sync does for
-		// a new neighbor, go-iroh v0.2.1 can start a NAT traversal round on the
-		// connection Rust dialed: iroh/endpoint.go seeds and triggers hole
-		// punching on whichever connection to the peer the map yields first
-		// (internal/socket/remote_state.go). The Go side then sends REACH_OUT
-		// frames as the QUIC server, and noq-proto closes the connection with
-		// PROTOCOL_VIOLATION, "Nat traversal(REACH_OUT): Not allowed for this
-		// endpoint's connection side". The gossip link goes down and the test
-		// fails at a different point on each run.
-		t.Skip("go-iroh sends REACH_OUT frames on server-side connections, which iroh closes")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -107,12 +91,14 @@ func testLiveSync(t *testing.T, goJoins bool) {
 	}
 
 	// Go writes; Rust receives the entry from gossip, not from a sync, and
-	// then fetches its content from Go.
+	// then fetches its content from Go. Rust can report the content before
+	// the insert, so the two events are awaited in either order.
 	if err := g.put(ctx, namespace, "go/live", "written while both are live"); err != nil {
 		t.Fatal(err)
 	}
-	rust.expect(t, ctx, "EVENT InsertRemote "+goID+" "+hex.EncodeToString([]byte("go/live")))
-	rust.expect(t, ctx, "EVENT ContentReady "+blobs.NewHash([]byte("written while both are live")).String())
+	rust.expectAll(t, ctx,
+		"EVENT InsertRemote "+goID+" "+hex.EncodeToString([]byte("go/live")),
+		"EVENT ContentReady "+blobs.NewHash([]byte("written while both are live")).String())
 
 	// Rust writes; Go receives it the same way.
 	rust.send(t, "put", "rust/live", "rust-writes-too")
@@ -142,14 +128,10 @@ func testLiveSync(t *testing.T, goJoins bool) {
 			strings.Join(goRows, "\n  "), strings.Join(rustRows, "\n  "))
 	}
 
-	// rust/before reached Go by reconciliation, not gossip. iroh-docs
-	// downloads the content of every remote insert, whichever way it came;
-	// go-iroh v0.2.1 live sync downloads only for gossip Put and ContentReady
-	// messages, so Go never fetches it.
-	short, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	if err := g.awaitContent(short, "rust/before"); err != nil {
-		t.Skipf("go-iroh live sync does not fetch content for entries it reconciled: %v", err)
+	// rust/before reached Go by reconciliation, not gossip. Live sync must
+	// fetch its content as well as its entry.
+	if err := g.awaitContent(ctx, "rust/before"); err != nil {
+		t.Fatal(err)
 	}
 }
 

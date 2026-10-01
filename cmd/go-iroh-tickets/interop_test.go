@@ -28,16 +28,11 @@ import (
 	"github.com/tmc/go-iroh/iroh"
 )
 
-// families are the loopback addresses the tests bind. IPv4 is the claim under
-// test. IPv6 tickets do not round-trip with go-iroh v0.2.1, because its
-// endpointticket codec writes, and expects, two extra varints after every
-// IPv6 socket address (known go-iroh bug 1); the IPv6 cases skip when they hit
-// it, naming it, so that they start passing once the codec is fixed.
-//
-// Rust tolerates the extra bytes after a ticket's last address, so a Go
-// ticket with one IPv6 address parses there. The "ipv6x2" case adds a second,
-// unreachable IPv6 address to the Go ticket, which is what a Go endpoint
-// bound to [::] announces and where Rust's parse fails.
+// families are the loopback addresses the tests bind. The "ipv6x2" case adds
+// a second, unreachable IPv6 address to the Go ticket, which is what a Go
+// endpoint bound to [::] announces. Before go-iroh v0.2.3, endpointticket
+// wrote two extra varints after each IPv6 address; Rust ignores trailing
+// bytes after the last address, so only a ticket with two caught it.
 var families = []struct {
 	name     string
 	loopback netip.Addr
@@ -48,9 +43,6 @@ var families = []struct {
 	{"ipv6", netip.IPv6Loopback(), "[::1]:0", netip.AddrPort{}},
 	{"ipv6x2", netip.IPv6Loopback(), "[::1]:0", netip.MustParseAddrPort("[2001:db8::1]:1")},
 }
-
-// bug1 is how a test names the known IPv6 ticket bug when it skips.
-const bug1 = "known go-iroh bug 1: endpointticket writes and reads two extra varints after each IPv6 address (fixed on branch fix/endpointticket-ipv6-wire)"
 
 // peerBin is the Rust peer built from interop/blobs. Without it the live
 // tests skip.
@@ -96,9 +88,6 @@ func TestInteropRustDialsGoTicket(t *testing.T) {
 			ticket := endpointticket.Encode(addr)
 			out, err := exec.CommandContext(ctx, bin, "ticket-dial", ticket, "from rust").CombinedOutput()
 			if err != nil {
-				if fam.loopback.Is6() && strings.Contains(string(out), "parse ticket") {
-					t.Skipf("%s\nRust: %s", bug1, out)
-				}
 				t.Fatalf("rust ticket-dial: %v\n%s", err, out)
 			}
 			if !strings.Contains(string(out), "ECHO from rust") {
@@ -123,9 +112,6 @@ func TestInteropGoDialsRustTicket(t *testing.T) {
 			ticket := startTicketPeer(t, ctx, bin, fam.rust)
 			addr, err := endpointticket.Decode(ticket)
 			if err != nil {
-				if fam.loopback.Is6() {
-					t.Skipf("%s\nendpointticket.Decode: %v", bug1, err)
-				}
 				t.Fatalf("decode Rust ticket: %v", err)
 			}
 			client, err := bind(ctx, iroh.WithBindAddr(netip.AddrPortFrom(fam.loopback, 0)))
